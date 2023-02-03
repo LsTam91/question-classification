@@ -92,6 +92,11 @@ def noun_question(question):
     for i, (token, pos) in enumerate(pos_tags):
         if pos in ["NN", "NNS", "NNP", "NNPS", "PRP", "PRP$"]:
             subject_indices.append(i)
+
+    if len(subject_indices) == 0:
+        print(question)
+        return ' ?'
+    
     to_keep = random.sample(subject_indices, random.randint(1, min(len(subject_indices), 5)))
 
     fake_question = " ".join([t for i, t in enumerate(tokens) if i in to_keep])

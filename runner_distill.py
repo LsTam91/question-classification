@@ -14,7 +14,7 @@ import argparse
 
 # from this project:
 from model import classification_model, collator, classification_test
-from model import train_and_distil, trad_collator
+from model import train_and_distil, trad_collator, classification_multilanguage
 
 from evaluate_utils import HFMetric, MultiHFMetric
 from dpr_like_model import collator_qc
@@ -52,7 +52,7 @@ parser.add_argument('--early-stop-criterion', dest='esc', type=str,
                     help='the name of the criterion used for early stopping (using validation set)')
 parser.add_argument('--precision', dest='precision', default=32, type=int,
                     help='32bit precision or mixed 16bit precision')
-parser.add_argument('--model-type', dest='model_type', default='distil', action='store_true',
+parser.add_argument('--model-type', dest='model_type', default='distil', #action='store_true',
                     help='classic, dpr-like, or distil')
 
 args = parser.parse_args()
@@ -101,32 +101,47 @@ def main():
         valid_collator = collator(model.tokenizer)
 
     elif args.model_type == 'distil':
-        model = train_and_distil(model_name = "bert-base-multilingual-cased", #"xlm-roberta-base", # TODO: args.model_name,
+        model = train_and_distil(model_name = "bert-base-multilingual-uncased", #"xlm-roberta-base", # TODO: args.model_name,
             validation_callback = validation_metrics,
             log_dir = log_folder+args.name
             )
         # train_collator = collator_two_task(model.tokenizer, corruption_rate=0.4)
         valid_collator = collator(model.tokenizer)
+    else:
+        model = classification_multilanguage(model_name = "bert-base-multilingual-uncased", #"xlm-roberta-base", # TODO: args.model_name,
+            validation_callback = validation_metrics,
+            log_dir = log_folder+args.name
+            )
+        valid_collator = collator(model.tokenizer)
 
 ### TODO: Load dataset, first draft to modify later: (traduction of squad2, NQD and opus fr-en)
+    
+    train, valid = [], []
+    for file in os.listdir('data/train'):
+        with open('data/train/' + file, 'r') as fp:
+            train.append(json.load(fp))
 
-    # Loading the datasets
-    with open('data/train/tfr_squadv2', 'r') as fp:
-        french_qa = json.load(fp)
+    for file in os.listdir('data/valid'):
+        with open('data/valid/' + file, 'r') as fp:
+            valid.append(json.load(fp))
 
-    with open("data/train/Natural_Question_Louis_tok", "r") as fp:
-        english_qa = json.load(fp)
+    # # Loading the datasets
+    # with open('data/train/squadv2_train', 'r') as fp:
+    #     french_qa = json.load(fp)
 
-    with open('data/train/opus_en_fr_2', 'r') as fp:
+    # with open("data/train/Natural_Question_Louis_tok", "r") as fp:
+    #     english_qa = json.load(fp)
+
+    with open('data/trad/opus_en_fr_st', 'r') as fp:
         opus = json.load(fp)
 
-    with open('data/valid/vfr_squadv2', 'r') as fp:
-        valid_fr_qa = json.load(fp)
+    # with open('data/valid/short_valid', 'r') as fp:
+    #     valid_fr_qa = json.load(fp)
 
-    loader_classi = DataLoader(ConcatDataset([french_qa, english_qa]), #french_qa['train'], #
+    loader_classi = DataLoader(ConcatDataset(train), # french_qa, 
                                 batch_size=args.batch_size,
                                 drop_last=True,
-                                collate_fn=collator(model.tokenizer, corruption_rate=0.6, language = 'fr'),
+                                collate_fn=collator(model.tokenizer, corruption_rate=0.5, language = 'fr'),
                                 shuffle=True,
                                 num_workers=8
                                 )
@@ -141,7 +156,7 @@ def main():
 
     train_dataloader = {"classi": loader_classi, "trad": loader_trad}
 
-    valid_dataloader = DataLoader(valid_fr_qa[:1000],
+    valid_dataloader = DataLoader(ConcatDataset(valid),
                                 batch_size=args.batch_size,
                                 drop_last=False,
                                 collate_fn = valid_collator,

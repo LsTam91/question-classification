@@ -211,6 +211,9 @@ class train_and_distil(pl.LightningModule):
         
         # L2 or cosinesimilarity
         self.dist = nn.CosineSimilarity(dim=1, eps=1e-6)
+
+        # Softmax fct:
+        self.softmax = torch.nn.Softmax(dim=1)
         
     
     def training_step(self, batch, batch_idx):
@@ -235,7 +238,7 @@ class train_and_distil(pl.LightningModule):
         optimizer = AdamW(self.model.parameters(), lr=1e-5)
 
         scheduler = {
-            "scheduler": LinearLR(optimizer, total_iters = 1000, start_factor= 1.0 / 1000.),
+            "scheduler": LinearLR(optimizer, total_iters = 1000, start_factor= 1.0 / 100.),
             "interval": "step",
             'name': 'lr_scheduler',
             "frequency": 1
@@ -245,7 +248,7 @@ class train_and_distil(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         output = self.model(**batch) # different here than two other algo
         self.log("val_loss", output.loss)
-        return {"predictions": output.logits.tolist(), "references": batch['labels'].tolist()}
+        return {"predictions": self.softmax(output.logits).tolist(), "references": batch['labels'].tolist()}
     
     def validation_epoch_end(self, batch, *kargs, **kwargs):
         predictions = sum([b["predictions"] for b in batch], [])
@@ -272,39 +275,65 @@ class trad_collator():
             }
 
 
-# class collator_two_task():
-#     def __init__(self, tokenizer, corruption_rate = 0.):
-#         self.corruption_rate = corruption_rate
-#         self.tokenizer = tokenizer
+class classification_multilanguage(pl.LightningModule):
+
+    def __init__(
+        self,
+        model_name = "bert-base-multilingual-cased",
+        load_pretraned_model = False,
+        validation_callback = None, 
+        log_dir = None,
+        num_labels = 2
+        ):
+
+        super().__init__()
+
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.tokenizer.add_tokens(['<en>', '<fr>'], special_tokens=True)
+
+        if load_pretraned_model != False:
+            self.model = torch.load(load_pretraned_model)
+        else:
+            self.model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
+            self.model.resize_token_embeddings(len(self.tokenizer))
+
+        self.validation_callback = validation_callback
+        self.log_dir = log_dir
+        
+        self.softmax = torch.nn.Softmax(dim=1)
     
-#     def __call__(self, batch):
-        
-#         t_batch = []
-#         c_batch = []
+    def training_step(self, batch, batch_idx):
+        output = self.model(**batch['classi'])
 
-#         for datum in batch:
-#             if datum['task'] == 'classi':
-#                 c_batch.append(datum['datum'])
-#             else:
-#                 t_batch.append(datum['datum'])
-#         # print(t_batch, c_batch)
-        
-#         if len(c_batch) > 0:
-#             c_batch = corrupt_and_convert(c_batch, corruption_rate=self.corruption_rate)
-#             c_tok = self.tokenizer([sample['input'] for sample in c_batch], return_tensors="pt",  padding='longest', truncation=True, max_length=512)
-        
-#         if len(t_batch) > 0:
-#             en_tok = self.tokenizer([sample['en'] for sample in t_batch], return_tensors="pt",  padding='longest', truncation=True, max_length=512)
-#             fr_tok = self.tokenizer([sample['fr'] for sample in t_batch], return_tensors="pt",  padding='longest', truncation=True, max_length=512)
-#         else: en_tok, fr_tok = {False, False}
+        self.log("train_loss", output.loss)
+        return output.loss
 
-#         return {
-#             'classi': {
-#                 **c_tok,
-#                 "labels": torch.as_tensor([sample['target'] for sample in c_batch])
-#             },
-#             'trad': {
-#                 'en': {**en_tok},
-#                 'fr': {**fr_tok}
-#             }
-#         }
+    def configure_optimizers(self):
+        optimizer = AdamW(self.model.parameters(), lr=1e-5)
+        # scheduler = LinearLR(optimizer, total_iters = 1000, start_factor= 1.0 / 100.)
+        # scheduler2 = ReduceLROnPlateau(optimizer, 'min', patience=3)
+        # scheduler2 = StepLR(optimizer, step_size=1000, gamma=0.5)
+        # scheduler = {
+        #     # "scheduler": SequentialLR(optimizer, schedulers=[scheduler1, scheduler2], milestones=[3]),
+        #     'scheduler': scheduler,
+        #     "interval": "step",
+        #     'name': 'lr_scheduler',
+        #     "frequency": 1
+        # }
+        # return [optimizer], [scheduler]
+        return optimizer
+
+    def validation_step(self, batch, batch_idx):
+        output = self.model(**batch)
+        self.log("val_loss", output.loss)#torch.as_tensor(loss), on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        return {"predictions": self.softmax(output.logits).tolist(), "references": batch['labels'].tolist()}
+    
+    def validation_epoch_end(self, batch, *kargs, **kwargs):
+        predictions = sum([b["predictions"] for b in batch], [])
+        predictions = [(a[0] < a[1]) * 1 for a in predictions]
+        references = sum([b["references"] for b in batch], [])
+
+        if self.validation_callback is not None:
+            validation_log =  self.validation_callback(predictions, references)
+            for k, v in validation_log.items():
+                self.log("val_"+k, v)
