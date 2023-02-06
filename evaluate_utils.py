@@ -4,7 +4,7 @@ import os
 class HFMetric:
     def __init__(self, metric_name, post_process = lambda x : x, **kwargs):
         if "HF_HOME" in os.environ:
-            metric_name = os.path.join(os.path.expandvars("$HF_HOME"),"evaluate/downloads", metric_name + ".py")
+            metric_name = os.path.join(os.path.expandvars("$HF_HOME"),"evaluate/metrics/"+metric_name+"/", metric_name + ".py")
         self.metric = evaluate.load(metric_name)
         self.post_process = post_process
         self.kwargs = kwargs

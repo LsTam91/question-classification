@@ -50,6 +50,9 @@ parser.add_argument('--limit-val-batches', dest='limit_val_batches', default=100
 parser.add_argument('--early-stop-criterion', dest='esc', type=str,
                     default="f1",
                     help='the name of the criterion used for early stopping (using validation set)')
+parser.add_argument('--patience', dest='patience', default=10,
+                    help='epochs before you stop training if no improvment')
+
 parser.add_argument('--precision', dest='precision', default=32, type=int,
                     help='32bit precision or mixed 16bit precision')
 parser.add_argument('--model-type', dest='model_type', default='distil', #action='store_true',
@@ -101,14 +104,14 @@ def main():
         valid_collator = collator(model.tokenizer)
 
     elif args.model_type == 'distil':
-        model = train_and_distil(model_name = "bert-base-multilingual-uncased", #"xlm-roberta-base", # TODO: args.model_name,
+        model = train_and_distil(model_name = os.path.expandvars("$HF_HOME/bert-base-multilingual-uncased"), #"xlm-roberta-base", # TODO: args.model_name,
             validation_callback = validation_metrics,
             log_dir = log_folder+args.name
             )
         # train_collator = collator_two_task(model.tokenizer, corruption_rate=0.4)
         valid_collator = collator(model.tokenizer)
     else:
-        model = classification_multilanguage(model_name = "bert-base-multilingual-uncased", #"xlm-roberta-base", # TODO: args.model_name,
+        model = classification_multilanguage(model_name = os.path.expandvars("$HF_HOME/bert-base-multilingual-uncased"), #"xlm-roberta-base", # TODO: args.model_name,
             validation_callback = validation_metrics,
             log_dir = log_folder+args.name
             )
@@ -143,7 +146,7 @@ def main():
                                 drop_last=True,
                                 collate_fn=collator(model.tokenizer, corruption_rate=0.5, language = 'fr'),
                                 shuffle=True,
-                                num_workers=8
+                                num_workers=16
                                 )
 
     loader_trad = DataLoader(opus,
@@ -151,7 +154,7 @@ def main():
                                 drop_last=True,
                                 collate_fn=trad_collator(model.tokenizer),
                                 shuffle=True,
-                                num_workers=8
+                                num_workers=16
                                 )
 
     train_dataloader = {"classi": loader_classi, "trad": loader_trad}
@@ -160,7 +163,7 @@ def main():
                                 batch_size=args.batch_size,
                                 drop_last=False,
                                 collate_fn = valid_collator,
-                                shuffle=False,
+                                shuffle=True,
                                 num_workers=16
                                 )
     
@@ -175,7 +178,7 @@ def main():
     checkpoint_callback_val_accuracy = ModelCheckpoint(monitor='val_accuracy', save_top_k=0, mode="max", filename="val-accuracy-checkpoint-{epoch:02d}-{val_accuracy:.2f}")
     checkpoint_callback_val_f1 = ModelCheckpoint(monitor='val_f1', save_top_k=1, mode="max", filename="val-f1-checkpoint-{epoch:02d}-{val_f1:.2f}")
     checkpoint_callback_val_recall = ModelCheckpoint(monitor='val_recall', save_top_k=0, mode="max", filename="val-recall-checkpoint-{epoch:02d}-{val_recall:.2f}")
-    early_stop_callback = EarlyStopping(monitor="val_" + args.esc, min_delta=0.00, patience=25, verbose=False, mode="max")
+    early_stop_callback = EarlyStopping(monitor="val_" + args.esc, min_delta=0.00, patience=args.patience, verbose=False, mode="max")
 
     callbacks = [
         lr_monitor,
@@ -196,12 +199,12 @@ def main():
         limit_val_batches=args.limit_val_batches,
         max_epochs=args.max_epochs, 
         deterministic=True,
-        # accumulate_grad_batches=8, TODO
+        accumulate_grad_batches=8,
         accelerator='gpu' if(not args.cpu_only) else 'cpu',
         devices=args.ndevices,
         auto_select_gpus=True,
-        precision=args.precision
-        # strategy="ddp" # strategy to train the model on different machine
+        precision=args.precision,
+        strategy="ddp" # strategy to train the model on different machine
     )
 
     trainer.fit(
