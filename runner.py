@@ -3,7 +3,7 @@ import os
 
 # import torch
 # from torch import nn
-from torch.utils.data import DataLoader, ConcatDataset
+from torch.utils.data import DataLoader
 
 # import pytorch_lightning as pl
 from pytorch_lightning.loggers import  TensorBoardLogger
@@ -14,8 +14,6 @@ import argparse
 
 # from this project:
 from model import classification_model, collator, classification_test
-from model import train_and_distil, trad_collator, classification_multilanguage
-
 from evaluate_utils import HFMetric, MultiHFMetric
 from dpr_like_model import collator_qc
 
@@ -50,13 +48,10 @@ parser.add_argument('--limit-val-batches', dest='limit_val_batches', default=100
 parser.add_argument('--early-stop-criterion', dest='esc', type=str,
                     default="f1",
                     help='the name of the criterion used for early stopping (using validation set)')
-parser.add_argument('--patience', dest='patience', default=10,
-                    help='epochs before you stop training if no improvment')
-
 parser.add_argument('--precision', dest='precision', default=32, type=int,
                     help='32bit precision or mixed 16bit precision')
-parser.add_argument('--model-type', dest='model_type', default='distil', #action='store_true',
-                    help='classic, dpr-like, or distil')
+parser.add_argument('--dpr-like', dest='dpr_like', default=False, action='store_true',
+                    help='to train my hand-made dpr like model')
 
 args = parser.parse_args()
 
@@ -85,85 +80,42 @@ def main():
     log_folder = os.path.expandvars("logs")
 
     #Loading the model
-    if args.model_type == 'dpr-like':
+    if args.dpr_like:
         # To try some hand made models
         model = classification_test(model_name = args.model_name,
             validation_callback = validation_metrics,
             log_dir = log_folder+args.name
             )
-        train_collator = collator_qc(model.tokenizer, corruption_rate = 0.4)
-        valid_collator = collator_qc(model.tokenizer)
-
-    elif args.model_type == 'classic': 
+    else: 
         # classic transformer classification model:
         model = classification_model(model_name = args.model_name,
             validation_callback = validation_metrics,
             log_dir = log_folder+args.name
             )
-        train_collator = collator(model.tokenizer, corruption_rate=0.4)
-        valid_collator = collator(model.tokenizer)
 
-    elif args.model_type == 'distil':
-        model = train_and_distil(model_name = os.path.expandvars("$HF_HOME/bert-base-multilingual-uncased"), #"xlm-roberta-base", # TODO: args.model_name,
-            validation_callback = validation_metrics,
-            log_dir = log_folder+args.name
-            )
-        # train_collator = collator_two_task(model.tokenizer, corruption_rate=0.4)
-        valid_collator = collator(model.tokenizer)
-    else:
-        model = classification_multilanguage(model_name = os.path.expandvars("$HF_HOME/bert-base-multilingual-uncased"), #"xlm-roberta-base", # TODO: args.model_name,
-            validation_callback = validation_metrics,
-            log_dir = log_folder+args.name
-            )
-        valid_collator = collator(model.tokenizer)
+    # Loading the datasets
+    # with open('french_squadv2', 'r') as fp:
+    #     dataset = json.load(fp)
+    with open('/people/tamames/QA/Metrics/data/train/squadv2_train', 'r') as fp:
+        train_dataset = json.load(fp)
 
-### TODO: Load dataset, first draft to modify later: (traduction of squad2, NQD and opus fr-en)
-    
-    train, valid = [], []
-    for file in os.listdir('data/train'):
-        with open('data/train/' + file, 'r') as fp:
-            train.append(json.load(fp))
+    with open('/people/tamames/QA/Metrics/data/valid/squadv2_valid', 'r') as fp:
+        valid_dataset = json.load(fp)
 
-    for file in os.listdir('data/valid'):
-        with open('data/valid/' + file, 'r') as fp:
-            valid.append(json.load(fp))
-
-    # # Loading the datasets
-    # with open('data/train/squadv2_train', 'r') as fp:
-    #     french_qa = json.load(fp)
-
-    # with open("data/train/Natural_Question_Louis_tok", "r") as fp:
-    #     english_qa = json.load(fp)
-
-    with open('data/trad/opus_en_fr_st', 'r') as fp:
-        opus = json.load(fp)
-
-    # with open('data/valid/short_valid', 'r') as fp:
-    #     valid_fr_qa = json.load(fp)
-
-    loader_classi = DataLoader(ConcatDataset(train), # french_qa, 
+    # Training and validation dataloader
+    train_dataloader = DataLoader(train_dataset,
                                 batch_size=args.batch_size,
                                 drop_last=True,
-                                collate_fn=collator(model.tokenizer, corruption_rate=0.5, language = 'fr'),
+                                collate_fn=collator(model.tokenizer, corruption_rate=0.4) if(not args.dpr_like) else collator_qc(model.tokenizer, corruption_rate = 0.4),
                                 shuffle=True,
                                 num_workers=16
                                 )
 
-    loader_trad = DataLoader(opus,
-                                batch_size=5,  #args.batch_size,
-                                drop_last=True,
-                                collate_fn=trad_collator(model.tokenizer),
-                                shuffle=True,
-                                num_workers=16
-                                )
-
-    train_dataloader = {"classi": loader_classi, "trad": loader_trad}
-
-    valid_dataloader = DataLoader(ConcatDataset(valid),
+    valid_dataloader = DataLoader(valid_dataset,
                                 batch_size=args.batch_size,
                                 drop_last=False,
-                                collate_fn = valid_collator,
-                                shuffle=True,
+                                collate_fn = collator(model.tokenizer) if(not args.dpr_like) else collator_qc(model.tokenizer),
+                                shuffle=False,
                                 num_workers=16
                                 )
     
@@ -178,7 +130,7 @@ def main():
     checkpoint_callback_val_accuracy = ModelCheckpoint(monitor='val_accuracy', save_top_k=0, mode="max", filename="val-accuracy-checkpoint-{epoch:02d}-{val_accuracy:.2f}")
     checkpoint_callback_val_f1 = ModelCheckpoint(monitor='val_f1', save_top_k=1, mode="max", filename="val-f1-checkpoint-{epoch:02d}-{val_f1:.2f}")
     checkpoint_callback_val_recall = ModelCheckpoint(monitor='val_recall', save_top_k=0, mode="max", filename="val-recall-checkpoint-{epoch:02d}-{val_recall:.2f}")
-    early_stop_callback = EarlyStopping(monitor="val_" + args.esc, min_delta=0.00, patience=args.patience, verbose=False, mode="max")
+    early_stop_callback = EarlyStopping(monitor="val_" + args.esc, min_delta=0.00, patience=5, verbose=False, mode="max")
 
     callbacks = [
         lr_monitor,
@@ -202,9 +154,8 @@ def main():
         accumulate_grad_batches=8,
         accelerator='gpu' if(not args.cpu_only) else 'cpu',
         devices=args.ndevices,
-        # auto_select_gpus=True,
         precision=args.precision,
-        strategy="ddp_find_unused_parameters_false" # strategy to train the model on different machine
+        strategy="ddp" # strategy to train the model on different machine
     )
 
     trainer.fit(

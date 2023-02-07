@@ -63,7 +63,7 @@ class classification_model(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         output = self.model(**batch)
         loss = output[0]
-        self.log("train_loss", loss) #torch.as_tensor(loss), on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log("train_loss", loss, sync_dist=True) #torch.as_tensor(loss), on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return loss
 
     def configure_optimizers(self):
@@ -84,7 +84,7 @@ class classification_model(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         output = self.model(**batch)
         loss = output[0]
-        self.log("val_loss", loss)#torch.as_tensor(loss), on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log("val_loss", loss, sync_dist=True)#torch.as_tensor(loss), on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return {"predictions": output.logits.tolist(), "references": batch['labels'].tolist()}
     
     def validation_epoch_end(self, batch, *kargs, **kwargs):
@@ -97,7 +97,7 @@ class classification_model(pl.LightningModule):
         if self.validation_callback is not None:
             validation_log =  self.validation_callback(predictions, references)
             for k, v in validation_log.items():
-                self.log("val_"+k, v)
+                self.log("val_"+k, v, sync_dist=True)
         # if self.log_dir != None:
         #     df = pd.DataFrame({"predictions": predictions, "references": references})
         #     df.to_csv(os.path.join(self.log_dir, "validation_prediction-"+str(self.current_epoch)+".csv"))
@@ -147,7 +147,7 @@ class classification_test(pl.LightningModule):
     
     def training_step(self, batch, batch_idx):
         loss, _ = self.model(batch)
-        self.log("train_loss", loss)
+        self.log("train_loss", loss, sync_dist=True)
         return loss
 
     def configure_optimizers(self):
@@ -166,7 +166,7 @@ class classification_test(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         loss, pred = self.model(batch)
-        self.log("val_loss", loss)
+        self.log("val_loss", loss, sync_dist=True)
         return {"predictions": pred.tolist(), "references": batch['labels'].tolist()}
     
     def validation_epoch_end(self, batch, *kargs, **kwargs):
@@ -177,7 +177,7 @@ class classification_test(pl.LightningModule):
         if self.validation_callback is not None:
             validation_log =  self.validation_callback(predictions, references)
             for k, v in validation_log.items():
-                self.log("val_"+k, v)
+                self.log("val_"+k, v, sync_dist=True)
 
 
 class train_and_distil(pl.LightningModule):
@@ -228,9 +228,9 @@ class train_and_distil(pl.LightningModule):
 
         loss = output.loss + loss_trad
 
-        self.log("train_classi", output.loss)
-        self.log("train_trad", loss_trad)
-        self.log("train_loss", loss)
+        self.log("train_classi", output.loss, sync_dist=True)
+        self.log("train_trad", loss_trad, sync_dist=True)
+        self.log("train_loss", loss, sync_dist=True)
         
         return loss
 
@@ -247,7 +247,7 @@ class train_and_distil(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         output = self.model(**batch) # different here than two other algo
-        self.log("val_loss", output.loss)
+        self.log("val_loss", output.loss, sync_dist=True)
         return {"predictions": self.softmax(output.logits).tolist(), "references": batch['labels'].tolist()}
     
     def validation_epoch_end(self, batch, *kargs, **kwargs):
@@ -258,7 +258,7 @@ class train_and_distil(pl.LightningModule):
         if self.validation_callback is not None:
             validation_log =  self.validation_callback(predictions, references)
             for k, v in validation_log.items():
-                self.log("val_" + k, v)
+                self.log("val_" + k, v, sync_dist=True)
 
 
 class trad_collator():
@@ -305,7 +305,7 @@ class classification_multilanguage(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         output = self.model(**batch['classi'])
 
-        self.log("train_loss", output.loss)
+        self.log("train_loss", output.loss, sync_dist=True)
         return output.loss
 
     def configure_optimizers(self):
@@ -325,7 +325,7 @@ class classification_multilanguage(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         output = self.model(**batch)
-        self.log("val_loss", output.loss)#torch.as_tensor(loss), on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log("val_loss", output.loss, sync_dist=True)#torch.as_tensor(loss), on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return {"predictions": self.softmax(output.logits).tolist(), "references": batch['labels'].tolist()}
     
     def validation_epoch_end(self, batch, *kargs, **kwargs):
@@ -336,4 +336,4 @@ class classification_multilanguage(pl.LightningModule):
         if self.validation_callback is not None:
             validation_log =  self.validation_callback(predictions, references)
             for k, v in validation_log.items():
-                self.log("val_"+k, v)
+                self.log("val_"+k, v, sync_dist=True)
