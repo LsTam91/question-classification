@@ -23,6 +23,7 @@ from dpr_like_model import collator_qc
 from transformers import logging as hf_logging
 hf_logging.set_verbosity_error()
 
+from pytorch_lightning.strategies import DDPStrategy
 
 parser = argparse.ArgumentParser(
     description='Train classi model'
@@ -44,6 +45,8 @@ parser.add_argument('--log-every-n-steps', dest="log_every_n_steps", default=64,
 parser.add_argument('--batch-size', dest="batch_size", default=8, type=int)
 parser.add_argument('--max-epochs', dest="max_epochs", default=100, type=int,
                     help='number of training epoch' )
+parser.add_argument('--noise', dest='noise', default=0.5,
+                    help='amount of noise to add in data')
 
 parser.add_argument('--limit-train-batches', dest='limit_train_batches', default=2000, type=int)
 parser.add_argument('--limit-val-batches', dest='limit_val_batches', default=10000, type=int)
@@ -144,7 +147,7 @@ def main():
     loader_classi = DataLoader(ConcatDataset(train), # french_qa, 
                                 batch_size=args.batch_size,
                                 drop_last=True,
-                                collate_fn=collator(model.tokenizer, corruption_rate=0.5, language = 'fr'),
+                                collate_fn=collator(model.tokenizer, corruption_rate=args.noise, language = 'fr'),
                                 shuffle=True,
                                 num_workers=16
                                 )
@@ -188,6 +191,10 @@ def main():
         checkpoint_callback_val_recall,
         early_stop_callback
     ]
+
+    # Explicitly specify the process group backend if you choose to
+    ddp = DDPStrategy(process_group_backend="gloo")
+
     # torch.use_deterministic_algorithms(True) --> à cause de satnza
     # Instanciate the trainer
     trainer = Trainer(
@@ -204,7 +211,7 @@ def main():
         devices=args.ndevices,
         # auto_select_gpus=True,
         precision=args.precision,
-        strategy="ddp_find_unused_parameters_false" # strategy to train the model on different machine
+        strategy=ddp #"ddp_find_unused_parameters_false" # strategy to train the model on different machine
     )
 
     trainer.fit(

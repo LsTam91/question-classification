@@ -95,7 +95,7 @@ def noun_question(question):
 
     if len(subject_indices) == 0:
         print(question)
-        return ' ?'
+        return ' ?' # ou question + ' ?'
     
     to_keep = random.sample(subject_indices, random.randint(1, min(len(subject_indices), 5)))
 
