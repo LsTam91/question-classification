@@ -36,7 +36,7 @@ parser.add_argument('--enable-progress-bar', dest="enable_progress_bar", default
                     help='show progress bar' )
 
 parser.add_argument('--name', dest="name", default="camembert-base000")
-parser.add_argument('--model_name', dest="model_name", default="camembert-base")
+parser.add_argument('--model_name', dest="model_name", default="bert-base-multilingual-uncased")
 parser.add_argument('--datasets-path', metavar='datasets_path',
                     default="QA/Traduction/")
 
@@ -45,8 +45,11 @@ parser.add_argument('--log-every-n-steps', dest="log_every_n_steps", default=64,
 parser.add_argument('--batch-size', dest="batch_size", default=8, type=int)
 parser.add_argument('--max-epochs', dest="max_epochs", default=100, type=int,
                     help='number of training epoch' )
+parser.add_argument('--num-worker', dest="num_worker", default=16, type=int)
 parser.add_argument('--noise', dest='noise', default=0.5,
                     help='amount of noise to add in data')
+parser.add_argument('--distance', dest='distance', default='cosine',
+                    help='cosine or l2')
 
 parser.add_argument('--limit-train-batches', dest='limit_train_batches', default=2000, type=int)
 parser.add_argument('--limit-val-batches', dest='limit_val_batches', default=10000, type=int)
@@ -94,7 +97,7 @@ def main():
             validation_callback = validation_metrics,
             log_dir = log_folder+args.name
             )
-        train_collator = collator_qc(model.tokenizer, corruption_rate = 0.4)
+        # train_collator = collator_qc(model.tokenizer, corruption_rate = 0.4)
         valid_collator = collator_qc(model.tokenizer)
 
     elif args.model_type == 'classic': 
@@ -103,18 +106,19 @@ def main():
             validation_callback = validation_metrics,
             log_dir = log_folder+args.name
             )
-        train_collator = collator(model.tokenizer, corruption_rate=0.4)
+        # train_collator = collator(model.tokenizer, corruption_rate=0.4)
         valid_collator = collator(model.tokenizer)
 
     elif args.model_type == 'distil':
-        model = train_and_distil(model_name = os.path.expandvars("$HF_HOME/bert-base-multilingual-uncased"), #"xlm-roberta-base", # TODO: args.model_name,
+        model = train_and_distil(model_name = os.path.expandvars("$HF_HOME/" + args.model_name), #"xlm-roberta-base", # TODO: args.model_name,
             validation_callback = validation_metrics,
-            log_dir = log_folder+args.name
+            log_dir = log_folder+args.name,
+            distance = args.distance
             )
         # train_collator = collator_two_task(model.tokenizer, corruption_rate=0.4)
         valid_collator = collator(model.tokenizer)
     else:
-        model = classification_multilanguage(model_name = os.path.expandvars("$HF_HOME/bert-base-multilingual-uncased"), #"xlm-roberta-base", # TODO: args.model_name,
+        model = classification_multilanguage(model_name = os.path.expandvars("$HF_HOME/" + args.model_name), #"xlm-roberta-base", # TODO: args.model_name,
             validation_callback = validation_metrics,
             log_dir = log_folder+args.name
             )
@@ -149,7 +153,7 @@ def main():
                                 drop_last=True,
                                 collate_fn=collator(model.tokenizer, corruption_rate=args.noise, language = 'fr'),
                                 shuffle=True,
-                                num_workers=16
+                                num_workers=args.num_worker
                                 )
 
     loader_trad = DataLoader(opus,
@@ -157,7 +161,7 @@ def main():
                                 drop_last=True,
                                 collate_fn=trad_collator(model.tokenizer),
                                 shuffle=True,
-                                num_workers=16
+                                num_workers=args.num_worker
                                 )
 
     train_dataloader = {"classi": loader_classi, "trad": loader_trad}
@@ -167,7 +171,7 @@ def main():
                                 drop_last=False,
                                 collate_fn = valid_collator,
                                 shuffle=True,
-                                num_workers=16
+                                num_workers=args.num_worker
                                 )
     
     # init the logger with the default tensorboard logger from lightning
@@ -177,9 +181,9 @@ def main():
     lr_monitor = LearningRateMonitor(logging_interval='step')
 
     # instanciate the differente callback for saving the model according to the different metrics
-    checkpoint_callback_val_loss = ModelCheckpoint(monitor='val_loss', save_top_k=0, mode="min", filename="val-loss-checkpoint-{epoch:02d}-{val_loss:.2f}")
-    checkpoint_callback_val_accuracy = ModelCheckpoint(monitor='val_accuracy', save_top_k=0, mode="max", filename="val-accuracy-checkpoint-{epoch:02d}-{val_accuracy:.2f}")
-    checkpoint_callback_val_f1 = ModelCheckpoint(monitor='val_f1', save_top_k=1, mode="max", filename="val-f1-checkpoint-{epoch:02d}-{val_f1:.2f}")
+    checkpoint_callback_val_loss = ModelCheckpoint(monitor='val_loss', save_top_k=1, mode="min", filename="val-loss-checkpoint-{epoch:02d}-{val_loss:.2f}")
+    checkpoint_callback_val_accuracy = ModelCheckpoint(monitor='val_accuracy', save_top_k=1, mode="max", filename="val-accuracy-checkpoint-{epoch:02d}-{val_accuracy:.2f}")
+    checkpoint_callback_val_f1 = ModelCheckpoint(monitor='val_f1', save_top_k=2, mode="max", filename="val-f1-checkpoint-{epoch:02d}-{val_f1:.2f}")
     checkpoint_callback_val_recall = ModelCheckpoint(monitor='val_recall', save_top_k=0, mode="max", filename="val-recall-checkpoint-{epoch:02d}-{val_recall:.2f}")
     early_stop_callback = EarlyStopping(monitor="val_" + args.esc, min_delta=0.00, patience=args.patience, verbose=False, mode="max")
 
@@ -195,7 +199,6 @@ def main():
     # Explicitly specify the process group backend if you choose to
     ddp = DDPStrategy(process_group_backend="gloo")
 
-    # torch.use_deterministic_algorithms(True) --> à cause de satnza
     # Instanciate the trainer
     trainer = Trainer(
         logger=tb_logger, 

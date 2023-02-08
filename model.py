@@ -189,10 +189,12 @@ class train_and_distil(pl.LightningModule):
         validation_callback = None,
         log_dir = None,
         num_labels = 2,
+        distance='cosine'
         ):
 
         super().__init__()
 
+        self.model_name = model_name
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         #TODO
         self.tokenizer.add_tokens(['<en>', '<fr>'], special_tokens=True)
@@ -201,30 +203,36 @@ class train_and_distil(pl.LightningModule):
         if load_pretraned_model != False:
             self.model = torch.load(load_pretraned_model)
         else:
-            # self.model = RobertaForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
             self.model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
-            # self.model = self.classi.roberta
             self.model.resize_token_embeddings(len(self.tokenizer))
         
         self.validation_callback = validation_callback
         self.log_dir = log_dir
         
         # L2 or cosinesimilarity
-        self.dist = nn.CosineSimilarity(dim=1, eps=1e-6)
+        self.distance = distance
+        if self.distance == 'cosine':
+            self.dist = nn.CosineSimilarity(dim=1, eps=1e-6)
 
         # Softmax fct:
         self.softmax = torch.nn.Softmax(dim=1)
         
     
     def training_step(self, batch, batch_idx):
-        # trouver un moyen de gérer les données!!
         output = self.model(**batch['classi'])
 
-        sen = self.model.bert(**batch['trad']['en'])[0][:, 0, :] #TODO change bert and roberta auto
-        sfr = self.model.bert(**batch['trad']['fr'])[0][:, 0, :]
+        if "xlm-roberta-base" in self.model_name:
+            sen = self.model.roberta(**batch['trad']['en'])[0][:, 0, :]
+            sfr = self.model.roberta(**batch['trad']['fr'])[0][:, 0, :]
+        else:
+            sen = self.model.bert(**batch['trad']['en'])[0][:, 0, :]
+            sfr = self.model.bert(**batch['trad']['fr'])[0][:, 0, :]
+
         # Take the distance between cls vector of both language
-        loss_trad = 1 - torch.mean(self.dist(sen, sfr))
-        # loss_trad = torch.mean(torch.norm(sen-sfr, dim=1, p=2))
+        if self.distance == 'cosine':
+            loss_trad = 1 - torch.mean(self.dist(sen, sfr))
+        else:
+            loss_trad = torch.mean(torch.norm(sen-sfr, dim=1, p=2))
 
         loss = output.loss + loss_trad
 
@@ -325,7 +333,7 @@ class classification_multilanguage(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         output = self.model(**batch)
-        self.log("val_loss", output.loss, sync_dist=True)#torch.as_tensor(loss), on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log("val_loss", output.loss, sync_dist=True)
         return {"predictions": self.softmax(output.logits).tolist(), "references": batch['labels'].tolist()}
     
     def validation_epoch_end(self, batch, *kargs, **kwargs):
