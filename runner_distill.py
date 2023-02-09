@@ -47,7 +47,7 @@ parser.add_argument('--max-epochs', dest="max_epochs", default=100, type=int,
                     help='number of training epoch' )
 parser.add_argument('--num-worker', dest="num_worker", default=16, type=int)
 parser.add_argument('--noise', dest='noise', default=0.5,
-                    help='amount of noise to add in data')
+                    help='amount of noise to add in data') # TODO : add type
 parser.add_argument('--distance', dest='distance', default='cosine',
                     help='cosine or l2')
 
@@ -57,7 +57,7 @@ parser.add_argument('--early-stop-criterion', dest='esc', type=str,
                     default="f1",
                     help='the name of the criterion used for early stopping (using validation set)')
 parser.add_argument('--patience', dest='patience', default=10,
-                    help='epochs before you stop training if no improvment')
+                    help='epochs before you stop training if no improvment')  # TODO : add type
 
 parser.add_argument('--precision', dest='precision', default=32, type=int,
                     help='32bit precision or mixed 16bit precision')
