@@ -32,36 +32,34 @@ parser.add_argument('--cpu-only', dest="cpu_only", default=False, action='store_
                     help='do not use GPUs (for dev only)')
 parser.add_argument('--ndevices', dest='ndevices', type=int, default=1)
 
-parser.add_argument('--enable-progress-bar', dest="enable_progress_bar", default=True, #action='store_true',
+parser.add_argument('--enable-progress-bar', dest="enable_progress_bar", default=False, action='store_true',
                     help='show progress bar' )
 
 parser.add_argument('--name', dest="name", default="camembert-base000")
-parser.add_argument('--model_name', dest="model_name", default="bert-base-multilingual-uncased")
-parser.add_argument('--datasets-path', metavar='datasets_path',
-                    default="QA/Traduction/")
+parser.add_argument('--model_name', dest="model_name", default="bert-base-multilingual-uncased", type=str)
+parser.add_argument('--datasets-path', metavar='datasets_path', default="QA/Traduction/", type=str)
 
 parser.add_argument('--log-every-n-steps', dest="log_every_n_steps", default=64, type=int,
                     help='log frequency')
 parser.add_argument('--batch-size', dest="batch_size", default=8, type=int)
 parser.add_argument('--max-epochs', dest="max_epochs", default=100, type=int,
                     help='number of training epoch' )
-parser.add_argument('--num-worker', dest="num_worker", default=16, type=int)
-parser.add_argument('--noise', dest='noise', default=0.5,
-                    help='amount of noise to add in data') # TODO : add type
-parser.add_argument('--distance', dest='distance', default='cosine',
+parser.add_argument('--num-worker', dest="num_worker", default=32, type=int)
+parser.add_argument('--noise', dest='noise', default=0.5, type=float,
+                    help='amount of noise to add in data')
+parser.add_argument('--distance', dest='distance', default='cosine', type=str,
                     help='cosine or l2')
 
 parser.add_argument('--limit-train-batches', dest='limit_train_batches', default=2000, type=int)
 parser.add_argument('--limit-val-batches', dest='limit_val_batches', default=10000, type=int)
-parser.add_argument('--early-stop-criterion', dest='esc', type=str,
-                    default="f1",
+parser.add_argument('--early-stop-criterion', dest='esc', type=str, default="f1",
                     help='the name of the criterion used for early stopping (using validation set)')
-parser.add_argument('--patience', dest='patience', default=10,
-                    help='epochs before you stop training if no improvment')  # TODO : add type
+parser.add_argument('--patience', dest='patience', default=10, type=int,
+                    help='epochs before you stop training if no improvment')
 
 parser.add_argument('--precision', dest='precision', default=32, type=int,
                     help='32bit precision or mixed 16bit precision')
-parser.add_argument('--model-type', dest='model_type', default='distil', #action='store_true',
+parser.add_argument('--model-type', dest='model_type', default='distil',
                     help='classic, dpr-like, or distil')
 
 args = parser.parse_args()
@@ -110,7 +108,7 @@ def main():
         valid_collator = collator(model.tokenizer)
 
     elif args.model_type == 'distil':
-        model = train_and_distil(model_name = os.path.expandvars("$HF_HOME/" + args.model_name), #"xlm-roberta-base", # TODO: args.model_name,
+        model = train_and_distil(model_name = os.path.expandvars("$HF_HOME/" + args.model_name),
             validation_callback = validation_metrics,
             log_dir = log_folder+args.name,
             distance = args.distance
@@ -118,14 +116,14 @@ def main():
         # train_collator = collator_two_task(model.tokenizer, corruption_rate=0.4)
         valid_collator = collator(model.tokenizer)
     else:
-        model = classification_multilanguage(model_name = os.path.expandvars("$HF_HOME/" + args.model_name), #"xlm-roberta-base", # TODO: args.model_name,
+        model = classification_multilanguage(model_name = os.path.expandvars("$HF_HOME/" + args.model_name),
             validation_callback = validation_metrics,
             log_dir = log_folder+args.name
             )
         valid_collator = collator(model.tokenizer)
 
-### TODO: Load dataset, first draft to modify later: (traduction of squad2, NQD and opus fr-en)
-    
+### TODO: Add more datasets and a test set (traduction of squad2, NQD and opus fr-en)
+    # # Loading the datasets
     train, valid = [], []
     for file in os.listdir('data/train'):
         with open('data/train/' + file, 'r') as fp:
@@ -135,20 +133,10 @@ def main():
         with open('data/valid/' + file, 'r') as fp:
             valid.append(json.load(fp))
 
-    # # Loading the datasets
-    # with open('data/train/squadv2_train', 'r') as fp:
-    #     french_qa = json.load(fp)
-
-    # with open("data/train/Natural_Question_Louis_tok", "r") as fp:
-    #     english_qa = json.load(fp)
-
     with open('data/trad/opus_en_fr_st', 'r') as fp:
         opus = json.load(fp)
 
-    # with open('data/valid/short_valid', 'r') as fp:
-    #     valid_fr_qa = json.load(fp)
-
-    loader_classi = DataLoader(ConcatDataset(train), # french_qa, 
+    loader_classi = DataLoader(ConcatDataset(train),
                                 batch_size=args.batch_size,
                                 drop_last=True,
                                 collate_fn=collator(model.tokenizer, corruption_rate=args.noise, language = 'fr'),
@@ -157,7 +145,7 @@ def main():
                                 )
 
     loader_trad = DataLoader(opus,
-                                batch_size=5,  #args.batch_size,
+                                batch_size=5,
                                 drop_last=True,
                                 collate_fn=trad_collator(model.tokenizer),
                                 shuffle=True,
