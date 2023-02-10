@@ -15,10 +15,9 @@ from dpr_like_model import head_cls, head_colbert_like
 
 
 class collator():
-    def __init__(self, tokenizer, corruption_rate = 0., language = 'fr'):
+    def __init__(self, tokenizer, corruption_rate = 0.):
         self.corruption_rate = corruption_rate
         self.tokenizer = tokenizer
-        self.language = language
 
         # if corruption_rate != 0:
         #     self.nlp = stanza.Pipeline(lang="fr")
@@ -26,7 +25,7 @@ class collator():
     
     def __call__(self, batch):
         # nlp=self.nlp, 
-        batch = corrupt_and_convert(batch, language=self.language, corruption_rate=self.corruption_rate)
+        batch = corrupt_and_convert(batch, corruption_rate=self.corruption_rate)
         
         src_txt = [sample['input'] for sample in batch]
         src_tok = self.tokenizer(src_txt, return_tensors="pt",  padding='longest', truncation=True, max_length=512)
@@ -114,71 +113,6 @@ class classification_model(pl.LightningModule):
     #     return [{"qid":batch["qid"][i], "qtype":batch["qtype"][i], "default_selection": batch["default_selection"][i],
     #              "generated_text": generated_text[i], "ground_truth_text":ground_truth_text[i]} for i in range(len(batch["input_ids"]))]
 
-class classification_test(pl.LightningModule):
-
-    def __init__(
-        self,
-        model_name = "camembert-base",
-        load_pretraned_model = False,
-        validation_callback = None, 
-        log_dir = None,
-        num_labels = 2,
-        head = 'head_cls'
-        ):
-
-        super().__init__()
-
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.tokenizer.add_tokens(['<question>', '<context>'], special_tokens=True)
-        
-
-        if load_pretraned_model != False:
-            self.model = torch.load(load_pretraned_model)
-        else:
-            self.model = CamembertForSequenceClassification.from_pretrained(model_name, num_labels=num_labels).roberta
-            self.model.resize_token_embeddings(len(self.tokenizer))
-            if head == 'head_cls':
-                self.model = head_cls(self.model)
-            else:
-                self.model = head_colbert_like(self.model)
-        
-        self.validation_callback = validation_callback
-        self.log_dir = log_dir
-    
-    def training_step(self, batch, batch_idx):
-        loss, _ = self.model(batch)
-        self.log("train_loss", loss, sync_dist=True)
-        return loss
-
-    def configure_optimizers(self):
-        optimizer = AdamW(self.model.parameters(), lr=1e-5)
-        # scheduler1 = LinearLR(optimizer, total_iters = 1000, start_factor= 1.0 / 100.)
-        # # scheduler2 = ReduceLROnPlateau(optimizer, 'min', patience=3)
-        # scheduler2 = StepLR(optimizer, step_size=1000, gamma=0.5)
-        scheduler = {
-            "scheduler": LinearLR(optimizer, total_iters = 1000, start_factor= 1.0 / 1000.),
-            "interval": "step",
-            'name': 'lr_scheduler',
-            "frequency": 1
-        }
-        return [optimizer], [scheduler]
-        # return optimizer
-
-    def validation_step(self, batch, batch_idx):
-        loss, pred = self.model(batch)
-        self.log("val_loss", loss, sync_dist=True)
-        return {"predictions": pred.tolist(), "references": batch['labels'].tolist()}
-    
-    def validation_epoch_end(self, batch, *kargs, **kwargs):
-        predictions = sum([b["predictions"] for b in batch], [])
-        predictions = [(a[0] < a[1]) * 1 for a in predictions]
-        references = sum([b["references"] for b in batch], [])
-
-        if self.validation_callback is not None:
-            validation_log =  self.validation_callback(predictions, references)
-            for k, v in validation_log.items():
-                self.log("val_"+k, v, sync_dist=True)
-
 
 class train_and_distil(pl.LightningModule):
 
@@ -230,9 +164,10 @@ class train_and_distil(pl.LightningModule):
 
         # Take the distance between cls vector of both language
         if self.distance == 'cosine':
-            loss_trad = 1 - torch.mean(self.dist(sen, sfr))
+            # loss_trad = 1 - torch.mean(self.dist(sen, sfr))
+            loss_trad = torch.mean(1-self.dist(sen, sfr))
         else:
-            loss_trad = torch.mean(torch.norm(sen-sfr, dim=1, p=2))
+            loss_trad = torch.mean(torch.norm(sen-sfr, dim=1, p=2)) * 0.1
 
         loss = output.loss + loss_trad
 

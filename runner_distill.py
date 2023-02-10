@@ -1,8 +1,6 @@
 import json 
 import os
 
-# import torch
-# from torch import nn
 from torch.utils.data import DataLoader, ConcatDataset
 
 # import pytorch_lightning as pl
@@ -13,11 +11,10 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 import argparse
 
 # from this project:
-from model import classification_model, collator, classification_test
+from model import classification_model, collator
 from model import train_and_distil, trad_collator, classification_multilanguage
 
 from evaluate_utils import HFMetric, MultiHFMetric
-from dpr_like_model import collator_qc
 
 # To disable the model message
 from transformers import logging as hf_logging
@@ -65,6 +62,7 @@ parser.add_argument('--model-type', dest='model_type', default='distil',
 args = parser.parse_args()
 
 
+# we define the class score above to avoid lambda fct in validation_metrics
 class score:
     def __init__(self, name):
         self.name = name
@@ -80,7 +78,7 @@ def main():
     # Loading the metrics
     # Use of the different HuggingFace metrics f1, accuracy, recall
     validation_metrics = MultiHFMetric(
-        accuracy = HFMetric('accuracy', score('accuracy')), # we define the fct sb_score and rouge_score above to avoid lambda fct
+        accuracy = HFMetric('accuracy', score('accuracy')),
         f1 = HFMetric('f1', score('f1')),
         recall = HFMetric('recall', score('recall'))
     )
@@ -89,23 +87,13 @@ def main():
     log_folder = os.path.expandvars("logs")
 
     #Loading the model
-    if args.model_type == 'dpr-like':
-        # To try some hand made models
-        model = classification_test(model_name = args.model_name,
-            validation_callback = validation_metrics,
-            log_dir = log_folder+args.name
-            )
-        # train_collator = collator_qc(model.tokenizer, corruption_rate = 0.4)
-        valid_collator = collator_qc(model.tokenizer)
-
-    elif args.model_type == 'classic': 
-        # classic transformer classification model:
+    if args.model_type == 'french': 
+        # classic transformer classification model only in french:
+        # TODO: le virer
         model = classification_model(model_name = args.model_name,
             validation_callback = validation_metrics,
             log_dir = log_folder+args.name
             )
-        # train_collator = collator(model.tokenizer, corruption_rate=0.4)
-        valid_collator = collator(model.tokenizer)
 
     elif args.model_type == 'distil':
         model = train_and_distil(model_name = os.path.expandvars("$HF_HOME/" + args.model_name),
@@ -113,14 +101,13 @@ def main():
             log_dir = log_folder+args.name,
             distance = args.distance
             )
-        # train_collator = collator_two_task(model.tokenizer, corruption_rate=0.4)
-        valid_collator = collator(model.tokenizer)
+
     else:
         model = classification_multilanguage(model_name = os.path.expandvars("$HF_HOME/" + args.model_name),
             validation_callback = validation_metrics,
             log_dir = log_folder+args.name
             )
-        valid_collator = collator(model.tokenizer)
+
 
 ### TODO: Add more datasets and a test set (traduction of squad2, NQD and opus fr-en)
     # # Loading the datasets
@@ -139,7 +126,7 @@ def main():
     loader_classi = DataLoader(ConcatDataset(train),
                                 batch_size=args.batch_size,
                                 drop_last=True,
-                                collate_fn=collator(model.tokenizer, corruption_rate=args.noise, language = 'fr'),
+                                collate_fn=collator(model.tokenizer, corruption_rate=args.noise),
                                 shuffle=True,
                                 num_workers=args.num_worker
                                 )
@@ -157,7 +144,7 @@ def main():
     valid_dataloader = DataLoader(ConcatDataset(valid),
                                 batch_size=args.batch_size,
                                 drop_last=False,
-                                collate_fn = valid_collator,
+                                collate_fn = collator(model.tokenizer),
                                 shuffle=True,
                                 num_workers=args.num_worker
                                 )
@@ -197,7 +184,7 @@ def main():
         limit_val_batches=args.limit_val_batches,
         max_epochs=args.max_epochs, 
         deterministic=True,
-        accumulate_grad_batches=8,
+        accumulate_grad_batches={0: 1, 400: max(64 // args.batch_size, 1)},
         accelerator='gpu' if(not args.cpu_only) else 'cpu',
         devices=args.ndevices,
         # auto_select_gpus=True,

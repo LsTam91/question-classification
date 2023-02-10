@@ -13,9 +13,9 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 import argparse
 
 # from this project:
-from model import classification_model, collator, classification_test
+from model import classification_model, collator
 from evaluate_utils import HFMetric, MultiHFMetric
-from dpr_like_model import collator_qc
+from dpr_like_model import collator_qc, classification_test
 
 # To disable the model message
 from transformers import logging as hf_logging

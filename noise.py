@@ -127,11 +127,12 @@ def switch_subject(question):
         return ' '.join(tokens[1:-1][::-1]) + ' ?'
     
     
-def corrupt_and_convert(batch, language='fr', corruption_rate=0.2): # nlp, 
+def corrupt_and_convert(batch, corruption_rate=0.2): # nlp, 
     new_data = []
     ready = False
     for i, data in enumerate(batch):
         l = data['language'] + ' '
+        # l = ''  # it was for a test without special tokens
         # Pass if we swithed two context so it's already in new_data
         if ready:
             ready = False
@@ -169,38 +170,4 @@ def corrupt_and_convert(batch, language='fr', corruption_rate=0.2): # nlp,
                 new_data.append({'input': context, 'target': 0})
     return new_data
 
-
-def corrupt(batch, corruption_rate=0.2): # nlp, 
-    new_data = []
-    ready = False
-    for i, data in enumerate(batch):
-        # Pass if we swithed two context so it's already in new_data
-        if ready:
-            ready = False
-            pass
-        
-        # Convert and add the unanswerable question
-        elif not data['answerable']:
-            new_data.append({'question': data['question'], 'context': data['text'], 'target': 1})            
-        
-        # Randomly apply one of the four corruption function
-        else:
-            if random.random() > 1 - corruption_rate:
-                p = random.random()
-                if p < 0.33 and i+1<len(batch):
-                    new_data.append({'question': data['question'], 'context': data['text'], 'target': 1})
-                    new_data.append({'question': batch[i+1]['question'], 'context': batch[i+1]['text'], 'target': 1})
-                    ready = True
-                elif p < 0.66:
-                    new_data.append({'question': crop_words(data['question']), 'context': data['text'], 'target': 1})
-                else:
-                    new_data.append({'question': remove_subjects(data['question']), 'context': data['text'], 'target': 1})
-                # else:
-                #     context = get_important_noun_phrases(data['text'], nlp=nlp) + ' </s> ' + data['text']
-                #     new_data.append({'input': context, 'target': 1})
-
-            # If no corruption, just add the data
-            else:
-                new_data.append({'question': data['question'], 'context': data['text'], 'target': 0})
-    return new_data
 
