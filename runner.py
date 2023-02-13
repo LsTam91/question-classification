@@ -161,7 +161,8 @@ def main():
     trainer.fit(
         model=model,
         train_dataloaders=train_dataloader,
-        val_dataloaders=valid_dataloader
+        val_dataloaders=valid_dataloader,
+        test_d  
     )
     
 

@@ -203,6 +203,21 @@ class train_and_distil(pl.LightningModule):
             for k, v in validation_log.items():
                 self.log("val_" + k, v, sync_dist=True)
 
+    def test_step(self, batch, batch_idx):
+        output = self.model(**batch)
+        self.log("test_loss", output.loss, sync_dist=True)
+        return {"predictions": self.softmax(output.logits).tolist(), "references": batch['labels'].tolist()}
+    
+    def test_epoch_end(self, batch, *kargs, **kwargs):
+        predictions = sum([b["predictions"] for b in batch], [])
+        predictions = [(a[0] < a[1]) * 1 for a in predictions]
+        references = sum([b["references"] for b in batch], [])
+
+        if self.validation_callback is not None:
+            validation_log =  self.validation_callback(predictions, references)
+            for k, v in validation_log.items():
+                self.log("test_" + k, v, sync_dist=True)
+
 
 class trad_collator():
     def __init__(self, tokenizer):

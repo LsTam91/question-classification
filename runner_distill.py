@@ -33,7 +33,7 @@ parser.add_argument('--enable-progress-bar', dest="enable_progress_bar", default
                     help='show progress bar' )
 
 parser.add_argument('--name', dest="name", default="camembert-base000")
-parser.add_argument('--model_name', dest="model_name", default="bert-base-multilingual-uncased", type=str)
+parser.add_argument('--model_name', dest="model_name", default="xlm-roberta-base", type=str)
 parser.add_argument('--datasets-path', metavar='datasets_path', default="QA/Traduction/", type=str)
 
 parser.add_argument('--log-every-n-steps', dest="log_every_n_steps", default=64, type=int,
@@ -101,6 +101,20 @@ def main():
             log_dir = log_folder+args.name,
             distance = args.distance
             )
+        
+        # Load en-fr traduction data
+        trad = []
+        for file in os.listdir('data/trad'):
+            with open('data/trad/' + file, 'r') as fp:
+                trad.append(json.load(fp))
+
+        loader_trad = DataLoader(ConcatDataset(trad),
+                                    batch_size=5,
+                                    drop_last=True,
+                                    collate_fn=trad_collator(model.tokenizer),
+                                    shuffle=True,
+                                    num_workers=args.num_worker
+                                    )
 
     else:
         model = classification_multilanguage(model_name = os.path.expandvars("$HF_HOME/" + args.model_name),
@@ -110,7 +124,8 @@ def main():
 
 
 ### TODO: Add more datasets and a test set (traduction of squad2, NQD and opus fr-en)
-    # # Loading the datasets
+    # # Load train and validation datasets
+    #TODO Test set
     train, valid = [], []
     for file in os.listdir('data/train'):
         with open('data/train/' + file, 'r') as fp:
@@ -120,9 +135,6 @@ def main():
         with open('data/valid/' + file, 'r') as fp:
             valid.append(json.load(fp))
 
-    with open('data/trad/opus_en_fr_st', 'r') as fp:
-        opus = json.load(fp)
-
     loader_classi = DataLoader(ConcatDataset(train),
                                 batch_size=args.batch_size,
                                 drop_last=True,
@@ -130,16 +142,6 @@ def main():
                                 shuffle=True,
                                 num_workers=args.num_worker
                                 )
-
-    loader_trad = DataLoader(opus,
-                                batch_size=5,
-                                drop_last=True,
-                                collate_fn=trad_collator(model.tokenizer),
-                                shuffle=True,
-                                num_workers=args.num_worker
-                                )
-
-    train_dataloader = {"classi": loader_classi, "trad": loader_trad}
 
     valid_dataloader = DataLoader(ConcatDataset(valid),
                                 batch_size=args.batch_size,
@@ -157,9 +159,9 @@ def main():
 
     # instanciate the differente callback for saving the model according to the different metrics
     checkpoint_callback_val_loss = ModelCheckpoint(monitor='val_loss', save_top_k=1, mode="min", filename="val-loss-checkpoint-{epoch:02d}-{val_loss:.2f}")
-    checkpoint_callback_val_accuracy = ModelCheckpoint(monitor='val_accuracy', save_top_k=1, mode="max", filename="val-accuracy-checkpoint-{epoch:02d}-{val_accuracy:.2f}")
-    checkpoint_callback_val_f1 = ModelCheckpoint(monitor='val_f1', save_top_k=2, mode="max", filename="val-f1-checkpoint-{epoch:02d}-{val_f1:.2f}")
-    checkpoint_callback_val_recall = ModelCheckpoint(monitor='val_recall', save_top_k=0, mode="max", filename="val-recall-checkpoint-{epoch:02d}-{val_recall:.2f}")
+    # checkpoint_callback_val_accuracy = ModelCheckpoint(monitor='val_accuracy', save_top_k=0, mode="max", filename="val-accuracy-checkpoint-{epoch:02d}-{val_accuracy:.2f}")
+    checkpoint_callback_val_f1 = ModelCheckpoint(monitor='val_f1', save_top_k=1, mode="max", filename="val-f1-checkpoint-{epoch:02d}-{val_f1:.2f}")
+    # checkpoint_callback_val_recall = ModelCheckpoint(monitor='val_recall', save_top_k=0, mode="max", filename="val-recall-checkpoint-{epoch:02d}-{val_recall:.2f}")
     early_stop_callback = EarlyStopping(monitor="val_" + args.esc, min_delta=0.00, patience=args.patience, verbose=False, mode="max")
 
     callbacks = [
@@ -194,7 +196,7 @@ def main():
 
     trainer.fit(
         model=model,
-        train_dataloaders=train_dataloader,
+        train_dataloaders={"classi": loader_classi, "trad": loader_trad} if args.model_type == 'distil' else loader_classi,
         val_dataloaders=valid_dataloader
     )
     
