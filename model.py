@@ -5,13 +5,12 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import LinearLR, ReduceLROnPlateau, SequentialLR, StepLR
 import pytorch_lightning as pl
 from transformers import AutoTokenizer, CamembertForSequenceClassification
-from transformers import RobertaForSequenceClassification, AutoModelForSequenceClassification
+from transformers import AutoModelForSequenceClassification
 import os
 # import stanza
 
 # Import from project
 from noise import corrupt_and_convert
-from dpr_like_model import head_cls, head_colbert_like
 
 
 class collator():
@@ -52,6 +51,7 @@ class classification_model(pl.LightningModule):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
 
         if load_pretraned_model != False:
+            # self.model = self.load_state_dict(torch.load(load_pretraned_model))
             self.model = torch.load(load_pretraned_model)
         else:
             self.model = CamembertForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
@@ -118,7 +118,7 @@ class train_and_distil(pl.LightningModule):
 
     def __init__(
         self,
-        model_name = "xlm-roberta-base", 
+        model_name = "xlm-roberta-base", # "bert-base-multilingual-uncased", #
         load_pretraned_model = False,
         validation_callback = None,
         log_dir = None,
@@ -136,6 +136,7 @@ class train_and_distil(pl.LightningModule):
 
         if load_pretraned_model != False:
             self.model = torch.load(load_pretraned_model)
+            # self.model = self.load_state_dict(torch.load(load_pretraned_model), map_location=torch.device('cpu'))
         else:
             self.model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
             self.model.resize_token_embeddings(len(self.tokenizer))
@@ -237,7 +238,7 @@ class classification_multilanguage(pl.LightningModule):
 
     def __init__(
         self,
-        model_name = "bert-base-multilingual-cased",
+        model_name = "xlm-roberta-base",#"bert-base-multilingual-cased",
         load_pretraned_model = False,
         validation_callback = None, 
         log_dir = None,

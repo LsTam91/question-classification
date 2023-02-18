@@ -80,7 +80,8 @@ def main():
     validation_metrics = MultiHFMetric(
         accuracy = HFMetric('accuracy', score('accuracy')),
         f1 = HFMetric('f1', score('f1')),
-        recall = HFMetric('recall', score('recall'))
+        recall = HFMetric('recall', score('recall')),
+        precision = HFMetric('precision', score('precision'))
     )
 
     # To store the logs
@@ -123,10 +124,9 @@ def main():
             )
 
 
-### TODO: Add more datasets and a test set (traduction of squad2, NQD and opus fr-en)
+### TODO: Add more datasets and a test set (traduction of squad2, NQD and opus fr-en), add more data from davincii in french
     # # Load train and validation datasets
-    #TODO Test set
-    train, valid = [], []
+    train, valid, test = [], [], []
     for file in os.listdir('data/train'):
         with open('data/train/' + file, 'r') as fp:
             train.append(json.load(fp))
@@ -134,6 +134,10 @@ def main():
     for file in os.listdir('data/valid'):
         with open('data/valid/' + file, 'r') as fp:
             valid.append(json.load(fp))
+
+    # for file in os.listdir('data/test'):
+    #     with open('data/test/' + file, 'r') as fp:
+    #         test.append(json.load(fp))
 
     loader_classi = DataLoader(ConcatDataset(train),
                                 batch_size=args.batch_size,
@@ -149,8 +153,16 @@ def main():
                                 collate_fn = collator(model.tokenizer),
                                 shuffle=True,
                                 num_workers=args.num_worker
-                                )
+                                ) 
     
+    # test_dataloader = DataLoader(ConcatDataset(test),
+    #                             batch_size=args.batch_size,
+    #                             drop_last=False,
+    #                             collate_fn = collator(model.tokenizer),
+    #                             shuffle=True,
+    #                             num_workers=args.num_worker
+    #                             )
+
     # init the logger with the default tensorboard logger from lightning
     tb_logger = TensorBoardLogger(save_dir=log_folder, name=args.name)
     # tb_logger.log_hyperparams(vars(args))
@@ -167,9 +179,9 @@ def main():
     callbacks = [
         lr_monitor,
         checkpoint_callback_val_loss,
-        checkpoint_callback_val_accuracy,
+        # checkpoint_callback_val_accuracy,
         checkpoint_callback_val_f1,
-        checkpoint_callback_val_recall,
+        # checkpoint_callback_val_recall,
         early_stop_callback
     ]
 
@@ -197,9 +209,11 @@ def main():
     trainer.fit(
         model=model,
         train_dataloaders={"classi": loader_classi, "trad": loader_trad} if args.model_type == 'distil' else loader_classi,
-        val_dataloaders=valid_dataloader
+        val_dataloaders=valid_dataloader #{'valid': valid_dataloader, 'test': test_dataloader}
     )
     
+    # test the model
+    #trainer.test(model, dataloaders=DataLoader(test_set))
 
 if __name__ == "__main__":
     main()
