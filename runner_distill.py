@@ -41,6 +41,7 @@ parser.add_argument('--log-every-n-steps', dest="log_every_n_steps", default=64,
 parser.add_argument('--batch-size', dest="batch_size", default=8, type=int)
 parser.add_argument('--max-epochs', dest="max_epochs", default=100, type=int,
                     help='number of training epoch' )
+parser.add_argument('--save-top-k', dest="save_top_k", default=2, type=int)
 parser.add_argument('--num-worker', dest="num_worker", default=32, type=int)
 parser.add_argument('--noise', dest='noise', default=0.5, type=float,
                     help='amount of noise to add in data')
@@ -135,9 +136,9 @@ def main():
         with open('data/valid/' + file, 'r') as fp:
             valid.append(json.load(fp))
 
-    # for file in os.listdir('data/test'):
-    #     with open('data/test/' + file, 'r') as fp:
-    #         test.append(json.load(fp))
+    for file in os.listdir('data/test'):
+        with open('data/test/' + file, 'r') as fp:
+            test.append(json.load(fp))
 
     loader_classi = DataLoader(ConcatDataset(train),
                                 batch_size=args.batch_size,
@@ -155,13 +156,13 @@ def main():
                                 num_workers=args.num_worker
                                 ) 
     
-    # test_dataloader = DataLoader(ConcatDataset(test),
-    #                             batch_size=args.batch_size,
-    #                             drop_last=False,
-    #                             collate_fn = collator(model.tokenizer),
-    #                             shuffle=True,
-    #                             num_workers=args.num_worker
-    #                             )
+    test_dataloader = DataLoader(ConcatDataset(test),
+                                batch_size=args.batch_size,
+                                drop_last=False,
+                                collate_fn = collator(model.tokenizer),
+                                shuffle=True,
+                                num_workers=args.num_worker
+                                )
 
     # init the logger with the default tensorboard logger from lightning
     tb_logger = TensorBoardLogger(save_dir=log_folder, name=args.name)
@@ -170,9 +171,9 @@ def main():
     lr_monitor = LearningRateMonitor(logging_interval='step')
 
     # instanciate the differente callback for saving the model according to the different metrics
-    checkpoint_callback_val_loss = ModelCheckpoint(monitor='val_loss', save_top_k=1, mode="min", filename="val-loss-checkpoint-{epoch:02d}-{val_loss:.2f}")
+    checkpoint_callback_val_loss = ModelCheckpoint(monitor='val_loss', save_top_k=2, mode="min", filename="val-loss-checkpoint-{epoch:02d}-{val_loss:.2f}")
     # checkpoint_callback_val_accuracy = ModelCheckpoint(monitor='val_accuracy', save_top_k=0, mode="max", filename="val-accuracy-checkpoint-{epoch:02d}-{val_accuracy:.2f}")
-    checkpoint_callback_val_f1 = ModelCheckpoint(monitor='val_f1', save_top_k=1, mode="max", filename="val-f1-checkpoint-{epoch:02d}-{val_f1:.2f}")
+    checkpoint_callback_val_f1 = ModelCheckpoint(monitor='val_f1', save_top_k=2, mode="max", filename="val-f1-checkpoint-{epoch:02d}-{val_f1:.2f}")
     # checkpoint_callback_val_recall = ModelCheckpoint(monitor='val_recall', save_top_k=0, mode="max", filename="val-recall-checkpoint-{epoch:02d}-{val_recall:.2f}")
     early_stop_callback = EarlyStopping(monitor="val_" + args.esc, min_delta=0.00, patience=args.patience, verbose=False, mode="max")
 
@@ -213,7 +214,7 @@ def main():
     )
     
     # test the model
-    #trainer.test(model, dataloaders=DataLoader(test_set))
+    trainer.test(model, dataloaders=DataLoader(test_dataloader))
 
 if __name__ == "__main__":
     main()

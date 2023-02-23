@@ -1,5 +1,6 @@
 import random
 import nltk
+from textattack.augmentation.recipes import EasyDataAugmenter
 # import stanza
 # nlp = stanza.Pipeline(lang="fr")
 
@@ -127,7 +128,9 @@ def switch_subject(question):
         return ' '.join(tokens[1:-1][::-1]) + ' ?'
     
     
-def corrupt_and_convert(batch, corruption_rate=0.2): # nlp, 
+def corrupt_and_convert(batch, corruption_rate=0.2):
+    if corruption_rate > 0.:
+        eda = EasyDataAugmenter(pct_words_to_swap=0.2, transformations_per_example=1)
     new_data = []
     ready = False
     for i, data in enumerate(batch):
@@ -150,14 +153,22 @@ def corrupt_and_convert(batch, corruption_rate=0.2): # nlp,
                 if p < 0.4 and i+1<len(batch):
                     for d in noise_2(data, batch[i+1]):
                         new_data.append(d)
-                    ready = True
-                elif p < 0.5:
+                    ready = True                
+                elif p < 0.6:
+                    if data['language'] == '<en>':
+                        # noise with testattack
+                        context = l+ eda.augment(data['question'])[0] + ' </s> ' + data['text']
+                        new_data.append({'input': context, 'target': 1})
+                    elif data['language'] == '<fr>':
+                        # We take the other noise functions for the moment
+                        p = random.uniform(0.6, 1)
+                elif p < 0.7:
                     context = l+ crop_words(data['question']) + ' </s> ' + data['text']
                     new_data.append({'input': context, 'target': 1})
-                elif p < 0.65:
+                elif p < 0.8:
                     context = l+ remove_subjects(data['question']) + ' </s> ' + data['text']
                     new_data.append({'input': context, 'target': 1})
-                elif p < 0.8:
+                elif p < 0.9:
                     context = l+ noun_question(data['text']) + ' </s> ' + data['text']
                     new_data.append({'input': context, 'target': 1})
                 else:

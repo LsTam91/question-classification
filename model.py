@@ -262,24 +262,13 @@ class classification_multilanguage(pl.LightningModule):
         self.softmax = torch.nn.Softmax(dim=1)
     
     def training_step(self, batch, batch_idx):
-        output = self.model(**batch['classi'])
+        output = self.model(**batch)
 
         self.log("train_loss", output.loss, sync_dist=True)
         return output.loss
 
     def configure_optimizers(self):
         optimizer = AdamW(self.model.parameters(), lr=1e-5)
-        # scheduler = LinearLR(optimizer, total_iters = 1000, start_factor= 1.0 / 100.)
-        # scheduler2 = ReduceLROnPlateau(optimizer, 'min', patience=3)
-        # scheduler2 = StepLR(optimizer, step_size=1000, gamma=0.5)
-        # scheduler = {
-        #     # "scheduler": SequentialLR(optimizer, schedulers=[scheduler1, scheduler2], milestones=[3]),
-        #     'scheduler': scheduler,
-        #     "interval": "step",
-        #     'name': 'lr_scheduler',
-        #     "frequency": 1
-        # }
-        # return [optimizer], [scheduler]
         return optimizer
 
     def validation_step(self, batch, batch_idx):
