@@ -152,7 +152,7 @@ def main():
                                 batch_size=args.batch_size,
                                 drop_last=False,
                                 collate_fn = collator(model.tokenizer),
-                                shuffle=True,
+                                shuffle=False,
                                 num_workers=args.num_worker
                                 ) 
     
@@ -160,7 +160,7 @@ def main():
                                 batch_size=args.batch_size,
                                 drop_last=False,
                                 collate_fn = collator(model.tokenizer),
-                                shuffle=True,
+                                shuffle=False,
                                 num_workers=args.num_worker
                                 )
 
@@ -171,9 +171,9 @@ def main():
     lr_monitor = LearningRateMonitor(logging_interval='step')
 
     # instanciate the differente callback for saving the model according to the different metrics
-    checkpoint_callback_val_loss = ModelCheckpoint(monitor='val_loss', save_top_k=2, mode="min", filename="val-loss-checkpoint-{epoch:02d}-{val_loss:.2f}")
+    checkpoint_callback_val_loss = ModelCheckpoint(monitor='val_loss', save_top_k=args.save_top_k, mode="min", filename="val-loss-checkpoint-{epoch:02d}-{val_loss:.2f}")
     # checkpoint_callback_val_accuracy = ModelCheckpoint(monitor='val_accuracy', save_top_k=0, mode="max", filename="val-accuracy-checkpoint-{epoch:02d}-{val_accuracy:.2f}")
-    checkpoint_callback_val_f1 = ModelCheckpoint(monitor='val_f1', save_top_k=2, mode="max", filename="val-f1-checkpoint-{epoch:02d}-{val_f1:.2f}")
+    checkpoint_callback_val_f1 = ModelCheckpoint(monitor='val_f1', save_top_k=args.save_top_k, mode="max", filename="val-f1-checkpoint-{epoch:02d}-{val_f1:.2f}")
     # checkpoint_callback_val_recall = ModelCheckpoint(monitor='val_recall', save_top_k=0, mode="max", filename="val-recall-checkpoint-{epoch:02d}-{val_recall:.2f}")
     early_stop_callback = EarlyStopping(monitor="val_" + args.esc, min_delta=0.00, patience=args.patience, verbose=False, mode="max")
 

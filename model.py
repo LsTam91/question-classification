@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 from torch import nn
 from torch.optim import AdamW
@@ -6,8 +5,6 @@ from torch.optim.lr_scheduler import LinearLR, ReduceLROnPlateau, SequentialLR, 
 import pytorch_lightning as pl
 from transformers import AutoTokenizer, CamembertForSequenceClassification
 from transformers import AutoModelForSequenceClassification
-import os
-# import stanza
 
 # Import from project
 from noise import corrupt_and_convert
@@ -27,7 +24,7 @@ class collator():
         batch = corrupt_and_convert(batch, corruption_rate=self.corruption_rate)
         
         src_txt = [sample['input'] for sample in batch]
-        src_tok = self.tokenizer(src_txt, return_tensors="pt",  padding='longest', truncation=True, max_length=512)
+        src_tok = self.tokenizer(src_txt, return_tensors="pt",  padding='longest', truncation=True, max_length=768)
         
         return {
             **src_tok,
@@ -225,8 +222,8 @@ class trad_collator():
         self.tokenizer = tokenizer
     
     def __call__(self, batch):
-        en_tok = self.tokenizer('<en> ' + ' '.join([sample['en'] for sample in batch]), return_tensors="pt",  padding='longest', truncation=True, max_length=512)
-        fr_tok = self.tokenizer('<fr> ' + ' '.join([sample['fr'] for sample in batch]), return_tensors="pt",  padding='longest', truncation=True, max_length=512)
+        en_tok = self.tokenizer('<en> ' + ' '.join([sample['en'] for sample in batch]), return_tensors="pt",  padding='longest', truncation=True, max_length=768)
+        fr_tok = self.tokenizer('<fr> ' + ' '.join([sample['fr'] for sample in batch]), return_tensors="pt",  padding='longest', truncation=True, max_length=768)
 
         return {
                 'en': {**en_tok},
