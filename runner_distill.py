@@ -20,7 +20,7 @@ from evaluate_utils import HFMetric, MultiHFMetric
 from transformers import logging as hf_logging
 hf_logging.set_verbosity_error()
 
-from pytorch_lightning.strategies import DDPStrategy
+# from pytorch_lightning.strategies import DDPStrategy
 
 parser = argparse.ArgumentParser(
     description='Train classi model'
@@ -187,7 +187,7 @@ def main():
     ]
 
     # Explicitly specify the process group backend if you choose to
-    ddp = DDPStrategy(process_group_backend="gloo")
+    # ddp = DDPStrategy(process_group_backend="gloo")
 
     # Instanciate the trainer
     trainer = Trainer(
@@ -203,8 +203,8 @@ def main():
         accelerator='gpu' if(not args.cpu_only) else 'cpu',
         devices=args.ndevices,
         # auto_select_gpus=True,
-        precision=args.precision,
-        strategy=ddp #"ddp_find_unused_parameters_false" # strategy to train the model on different machine
+        precision=args.precision
+        # strategy=ddp #"ddp_find_unused_parameters_false" # strategy to train the model on different machine
     )
 
     trainer.fit(

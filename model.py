@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import LinearLR, ReduceLROnPlateau, SequentialLR, StepLR
+from torch.optim.lr_scheduler import LinearLR #, ReduceLROnPlateau, SequentialLR, StepLR
 import pytorch_lightning as pl
 from transformers import AutoTokenizer, CamembertForSequenceClassification
 from transformers import AutoModelForSequenceClassification
@@ -24,12 +24,26 @@ class collator():
         batch = corrupt_and_convert(batch, corruption_rate=self.corruption_rate)
         
         src_txt = [sample['input'] for sample in batch]
-        src_tok = self.tokenizer(src_txt, return_tensors="pt",  padding='longest', truncation=True, max_length=768)
+        src_tok = self.tokenizer(src_txt, return_tensors="pt",  padding='longest', truncation=True, max_length=512)
         
         return {
             **src_tok,
             "labels": torch.as_tensor([sample['target'] for sample in batch])
         }
+
+
+class trad_collator():
+    def __init__(self, tokenizer):
+        self.tokenizer = tokenizer
+    
+    def __call__(self, batch):
+        en_tok = self.tokenizer('<en> ' + ' '.join([sample['en'] for sample in batch]), return_tensors="pt",  padding='longest', truncation=True, max_length=512)
+        fr_tok = self.tokenizer('<fr> ' + ' '.join([sample['fr'] for sample in batch]), return_tensors="pt",  padding='longest', truncation=True, max_length=512)
+
+        return {
+                'en': {**en_tok},
+                'fr': {**fr_tok}
+            }
 
 
 class classification_model(pl.LightningModule):
@@ -215,20 +229,6 @@ class train_and_distil(pl.LightningModule):
             validation_log =  self.validation_callback(predictions, references)
             for k, v in validation_log.items():
                 self.log("test_" + k, v, sync_dist=True)
-
-
-class trad_collator():
-    def __init__(self, tokenizer):
-        self.tokenizer = tokenizer
-    
-    def __call__(self, batch):
-        en_tok = self.tokenizer('<en> ' + ' '.join([sample['en'] for sample in batch]), return_tensors="pt",  padding='longest', truncation=True, max_length=768)
-        fr_tok = self.tokenizer('<fr> ' + ' '.join([sample['fr'] for sample in batch]), return_tensors="pt",  padding='longest', truncation=True, max_length=768)
-
-        return {
-                'en': {**en_tok},
-                'fr': {**fr_tok}
-            }
 
 
 class classification_multilanguage(pl.LightningModule):
