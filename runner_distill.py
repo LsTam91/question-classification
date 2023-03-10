@@ -125,7 +125,6 @@ def main():
             )
 
 
-### TODO: Add more datasets and a test set (traduction of squad2, NQD and opus fr-en), add more data from davincii in french
     # # Load train and validation datasets
     train, valid, test = [], [], []
     for file in os.listdir('data/train'):
@@ -156,13 +155,13 @@ def main():
                                 num_workers=args.num_worker
                                 ) 
     
-    test_dataloader = DataLoader(ConcatDataset(test),
-                                batch_size=args.batch_size,
-                                drop_last=False,
-                                collate_fn = collator(model.tokenizer),
-                                shuffle=False,
-                                num_workers=args.num_worker
-                                )
+    # test_dataloader = DataLoader(ConcatDataset(test),
+    #                             batch_size=args.batch_size,
+    #                             drop_last=False,
+    #                             collate_fn = collator(model.tokenizer),
+    #                             shuffle=False,
+    #                             num_workers=args.num_worker
+    #                             )
 
     # init the logger with the default tensorboard logger from lightning
     tb_logger = TensorBoardLogger(save_dir=log_folder, name=args.name)
@@ -214,7 +213,7 @@ def main():
     )
     
     # test the model
-    trainer.test(model, dataloaders=DataLoader(test_dataloader))
+    # trainer.test(model, dataloaders=DataLoader(test_dataloader))
 
 if __name__ == "__main__":
     main()

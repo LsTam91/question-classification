@@ -135,7 +135,7 @@ def corrupt_and_convert(batch, corruption_rate=0.2):
     ready = False
     for i, data in enumerate(batch):
         l = data['language'] + ' '
-        # l = ''  # it was for a test without special tokens
+        # l = 'english :' if data['language']=='<en>' else 'french :' # it was for a test without special tokens
         # Pass if we swithed two context so it's already in new_data
         if ready:
             ready = False

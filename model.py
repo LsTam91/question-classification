@@ -14,13 +14,8 @@ class collator():
     def __init__(self, tokenizer, corruption_rate = 0.):
         self.corruption_rate = corruption_rate
         self.tokenizer = tokenizer
-
-        # if corruption_rate != 0:
-        #     self.nlp = stanza.Pipeline(lang="fr")
-        # else: self.nlp=None
     
     def __call__(self, batch):
-        # nlp=self.nlp, 
         batch = corrupt_and_convert(batch, corruption_rate=self.corruption_rate)
         
         src_txt = [sample['input'] for sample in batch]
@@ -245,13 +240,15 @@ class classification_multilanguage(pl.LightningModule):
         super().__init__()
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.tokenizer.add_tokens(['<en>', '<fr>'], special_tokens=True)
+        self.tokenizer.add_tokens(['<en>', '<fr>'], special_tokens=True) #TODO
 
         if load_pretraned_model != False:
             self.model = torch.load(load_pretraned_model)
         else:
             self.model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
             self.model.resize_token_embeddings(len(self.tokenizer))
+            # for param in self.model.roberta.parameters(): # To try when we freeze params
+            #     param.requires_grad = False
 
         self.validation_callback = validation_callback
         self.log_dir = log_dir
