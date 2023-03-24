@@ -94,7 +94,7 @@ class classification_model(pl.LightningModule):
     
     def validation_epoch_end(self, batch, *kargs, **kwargs):
         predictions = sum([b["predictions"] for b in batch], [])
-        predictions = [(a[0] < a[1]) * 1 for a in predictions]
+        predictions = [(a[0] > a[1]) * 1 for a in predictions]
         references = sum([b["references"] for b in batch], [])
         # predictions = np.concatenate(batch['predictions'], axis=0)
         # references = np.concatenate(batch['references'], axis=0)
@@ -202,7 +202,7 @@ class train_and_distil(pl.LightningModule):
     
     def validation_epoch_end(self, batch, *kargs, **kwargs):
         predictions = sum([b["predictions"] for b in batch], [])
-        predictions = [(a[0] < a[1]) * 1 for a in predictions]
+        predictions = [(a[0] > a[1]) * 1 for a in predictions]
         references = sum([b["references"] for b in batch], [])
 
         if self.validation_callback is not None:
@@ -217,7 +217,7 @@ class train_and_distil(pl.LightningModule):
     
     def test_epoch_end(self, batch, *kargs, **kwargs):
         predictions = sum([b["predictions"] for b in batch], [])
-        predictions = [(a[0] < a[1]) * 1 for a in predictions]
+        predictions = [(a[0] > a[1]) * 1 for a in predictions]
         references = sum([b["references"] for b in batch], [])
 
         if self.validation_callback is not None:
@@ -272,7 +272,7 @@ class classification_multilanguage(pl.LightningModule):
     
     def validation_epoch_end(self, batch, *kargs, **kwargs):
         predictions = sum([b["predictions"] for b in batch], [])
-        predictions = [(a[0] < a[1]) * 1 for a in predictions]
+        predictions = [(a[0] > a[1]) * 1 for a in predictions]
         references = sum([b["references"] for b in batch], [])
 
         if self.validation_callback is not None:

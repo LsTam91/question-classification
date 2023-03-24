@@ -4,45 +4,14 @@ from textattack.augmentation.recipes import EasyDataAugmenter
 # import stanza
 # nlp = stanza.Pipeline(lang="fr")
 
-def convert_data(data):
-    new_data = []
-    for i, a in enumerate(data):
-        context = a['question'] + ' </s> ' + a['text']
-        if a['answerable'] == True:
-            target = 0
-        else: target = 1
-        
-        new_data.append({'input': context, 'target': target})
-    
-    return new_data
-
-def noise_2first(data):
-    new_data = []
-    
-    context = data[1]['question'] + ' </s> ' + data[0]['text']
-    new_data.append({'input': context, 'target': 1})
-    
-    context = data[0]['question'] + ' </s> ' + data[1]['text']
-    new_data.append({'input': context, 'target': 1})
-
-    for i in range(2, len(data)):
-        context = data[i]['question'] + ' </s> ' + data[i]['text']
-        if data[i]['answerable'] == True:
-            target = 0
-        else: target = 1
-        
-        new_data.append({'input': context, 'target': target})        
-
-    return new_data
-
 def noise_2(d1, d2):
     new_data = []
     
     context = d1['question'] + ' </s> ' + d2['text']
-    new_data.append({'input': context, 'target': 1})
+    new_data.append({'input': context, 'target': 0})
     
     context = d2['question'] + ' </s> ' + d1['text']
-    new_data.append({'input': context, 'target': 1})
+    new_data.append({'input': context, 'target': 0})
 
     return new_data
 
@@ -127,7 +96,7 @@ def switch_subject(question):
     else:
         return ' '.join(tokens[1:-1][::-1]) + ' ?'
     
-    
+    # Now 0 is for False and 1 for True
 def corrupt_and_convert(batch, corruption_rate=0.2):
     if corruption_rate > 0.:
         eda = EasyDataAugmenter(pct_words_to_swap=0.2, transformations_per_example=1)
@@ -144,7 +113,7 @@ def corrupt_and_convert(batch, corruption_rate=0.2):
         # Convert and add the unanswerable question
         elif not data['answerable']:
             context = l+ data['question'] + ' </s> ' + data['text']
-            new_data.append({'input': context, 'target': 1})            
+            new_data.append({'input': context, 'target': 0})            
         
         # Randomly apply one of the four corruption function
         else:
@@ -158,27 +127,27 @@ def corrupt_and_convert(batch, corruption_rate=0.2):
                     if data['language'] == '<en>':
                         # noise with testattack
                         context = l+ eda.augment(data['question'])[0] + ' </s> ' + data['text']
-                        new_data.append({'input': context, 'target': 1})
+                        new_data.append({'input': context, 'target': 0})
                     elif data['language'] == '<fr>':
                         # We take the other noise functions for the moment
                         p = random.uniform(0.6, 1)
                 elif p < 0.7:
                     context = l+ crop_words(data['question']) + ' </s> ' + data['text']
-                    new_data.append({'input': context, 'target': 1})
+                    new_data.append({'input': context, 'target': 0})
                 elif p < 0.8:
                     context = l+ remove_subjects(data['question']) + ' </s> ' + data['text']
-                    new_data.append({'input': context, 'target': 1})
+                    new_data.append({'input': context, 'target': 0})
                 elif p < 0.9:
                     context = l+ noun_question(data['text']) + ' </s> ' + data['text']
-                    new_data.append({'input': context, 'target': 1})
+                    new_data.append({'input': context, 'target': 0})
                 else:
                     context = l+ switch_subject(data['question']) + ' </s> ' + data['text']
-                    new_data.append({'input': context, 'target': 1})
+                    new_data.append({'input': context, 'target': 0})
 
             # If no corruption, just add the data
             else:
                 context = l+ data['question'] + ' </s> ' + data['text']
-                new_data.append({'input': context, 'target': 0})
+                new_data.append({'input': context, 'target': 1})
     return new_data
 
 
