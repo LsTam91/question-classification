@@ -23,7 +23,7 @@ hf_logging.set_verbosity_error()
 # from pytorch_lightning.strategies import DDPStrategy
 
 parser = argparse.ArgumentParser(
-    description='Train classi model'
+    description='Train classification model'
     )
 parser.add_argument('--cpu-only', dest="cpu_only", default=False, action='store_true',
                     help='do not use GPUs (for dev only)')
