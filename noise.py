@@ -1,10 +1,21 @@
 import random
 import nltk
 from textattack.augmentation.recipes import EasyDataAugmenter
-# import stanza
-# nlp = stanza.Pipeline(lang="fr")
+from typing import List, Dict, Any, Union
 
-def noise_2(d1, d2):
+def swap_2(d1: Dict[str, Any], d2: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Applies a noise augmentation by swapping questions between two given data
+    points and concatenating them.
+
+    Args:
+        d1: The first data point containing 'question' and 'text' keys.
+        d2: The second data point containing 'question' and 'text' keys.
+
+    Returns:
+        A list of dictionaries with 'input' and 'target' keys.
+        'target' is 0 when the question is not answerable with the given context
+    """
     new_data = []
     
     context = d1['question'] + ' </s> ' + d2['text']
@@ -15,7 +26,17 @@ def noise_2(d1, d2):
 
     return new_data
 
-def crop_words(question):
+def crop_words(question: str) -> str:
+    """
+    Applies a crop words augmentation by removing a random subset of words from a
+    given question.
+
+    Args:
+        question: A string containing the question to be cropped.
+
+    Returns:
+        A string containing the cropped question.
+    """
     words = question.split()
     if len(words) < 4:
         return words[-1]
@@ -25,14 +46,24 @@ def crop_words(question):
     cropped_words = [words[i] for i in indexes]
     return ' '.join(cropped_words)
 
-def remove_subjects(question):
+def remove_subjects(question: str) -> str:
+    """
+    Applies a remove subjects augmentation by removing a random subset of
+    nouns or pronouns from a given question.
+
+    Args:
+        question: A string containing the question to remove subjects from.
+
+    Returns:
+        A string containing the question without subjects.
+    """
     # Tokenize the question
     tokens = nltk.word_tokenize(question)
 
     # Part of speech tag the tokens
     pos_tags = nltk.pos_tag(tokens)
 
-    # Find the indices of the two random nouns or pronouns in the question
+    # Find the indices of nouns or pronouns in the question
     subject_indices = []
     for i, (token, pos) in enumerate(pos_tags):
         if pos in ["NN", "NNS", "NNP", "NNPS", "PRP", "PRP$"]:
@@ -41,9 +72,10 @@ def remove_subjects(question):
     # Choose between 1 to 3 of them to remove
     num_words = random.randint(1, len(subject_indices) // 2 + 1)
     
-    # Pour éviter toute erreur
+    # Security to not have an error if no nouns or pronouns are found
     if subject_indices == []:
         return ' ?'
+
     to_crop = random.sample(subject_indices, num_words)
 
     # Remove the subjects from the question
@@ -51,9 +83,20 @@ def remove_subjects(question):
 
     return question_without_subjects
 
-def noun_question(question):
+def noun_question(text: str) -> str:
+    """
+    Applies a noun question augmentation by randomly selecting 1 to 5
+    nouns or pronouns from a given text and forming a new question
+    with them.
+
+    Args:
+        text: A string containing the text to select nouns from.
+
+    Returns:
+        A string containing the new question with the selected nouns.
+    """
     # Tokenize the question
-    tokens = nltk.word_tokenize(question)
+    tokens = nltk.word_tokenize(text)
 
     # Part of speech tag the tokens
     pos_tags = nltk.pos_tag(tokens)
@@ -63,9 +106,10 @@ def noun_question(question):
         if pos in ["NN", "NNS", "NNP", "NNPS", "PRP", "PRP$"]:
             subject_indices.append(i)
 
+    # Security to not have an error if no nouns or pronouns are found
     if len(subject_indices) == 0:
-        print(question)
-        return ' ?' # ou question + ' ?'
+        # return a  random selection of a random number of word from a text
+        return " ".join(random.sample(text.split(), random.randint(1, min(len(text.split()), 30)))) + " ?"
     
     to_keep = random.sample(subject_indices, random.randint(1, min(len(subject_indices), 5)))
 
@@ -73,7 +117,17 @@ def noun_question(question):
     
     return fake_question + ' ?'
 
-def switch_subject(question):
+def switch_subject(question: str) -> str:
+    """
+    Applies a switch augmentation by switching the positions
+    of nouns or pronouns in the question.
+
+    Args:
+        text: A string containing the question to modify.
+
+    Returns:
+        A string containing the new question with the switched nouns.
+    """
     # Tokenize the question
     tokens = nltk.word_tokenize(question)
 
@@ -90,14 +144,32 @@ def switch_subject(question):
         for i, u in enumerate(inds[::-1]):
             tokens[u] = to_switch[i]
         
-        # Changer la lettre capitale du debut de phrase si on prend le permier mot?
         return " ".join([t for i, t in enumerate(tokens)])
     
     else:
         return ' '.join(tokens[1:-1][::-1]) + ' ?'
     
     # Now 0 is for False and 1 for True
-def corrupt_and_convert(batch, corruption_rate=0.2):
+def corrupt_and_convert(batch: List[Dict[str, Any]], corruption_rate: float = 0.2) -> List[Dict[str, Any]]:
+    """
+    This function corrupts and converts a batch of data to improve the robustness of
+    a natural language processing model. It applies various data augmentation 
+    techniques to the input text to create a new dataset with modified examples.
+    The function also adds unanswerable questions to the dataset for the model to 
+    learn to identify such questions.
+
+    Args:
+        batch: A list of dictionaries where each dictionary contains a text, its language,
+        a question, and if the question is answerable.
+
+        corruption_rate: A float value between 0 and 1 that determines the rate of data
+        augmentation applied to the input text.
+
+    Returns:
+        A list of dictionaries where each dictionary contains a text (including its
+        language, a question and the context) and the target is a binary value representing
+        whether the instance is answerable (1) or unanswerable (0).
+    """
     if corruption_rate > 0.:
         eda = EasyDataAugmenter(pct_words_to_swap=0.2, transformations_per_example=1)
     new_data = []
@@ -120,7 +192,7 @@ def corrupt_and_convert(batch, corruption_rate=0.2):
             if random.random() > 1 - corruption_rate:
                 p = random.random()
                 if p < 0.4 and i+1<len(batch):
-                    for d in noise_2(data, batch[i+1]):
+                    for d in swap_2(data, batch[i+1]):
                         new_data.append(d)
                     ready = True                
                 elif p < 0.6:
