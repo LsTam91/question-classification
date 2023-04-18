@@ -11,37 +11,37 @@ from typing import List, Dict, Any, Union
 from noise import corrupt_and_convert
 
 
-# class collator():
-#     def __init__(self, tokenizer, corruption_rate = 0.):
-#         self.corruption_rate = corruption_rate
-#         self.tokenizer = tokenizer
-    
-#     def __call__(self, batch):
-#         batch = corrupt_and_convert(batch, corruption_rate=self.corruption_rate)
-        
-#         src_txt = [sample['input'] for sample in batch]
-#         src_tok = self.tokenizer(src_txt, return_tensors="pt",  padding='longest', truncation=True, max_length=512)
-        
-#         return {
-#             **src_tok,
-#             "labels": torch.as_tensor([sample['target'] for sample in batch])
-#         }
-
-class Collator:
-    def __init__(self, tokenizer, corruption_rate: float = 0.0):
+class collator():
+    def __init__(self, tokenizer, corruption_rate = 0.):
         self.corruption_rate = corruption_rate
         self.tokenizer = tokenizer
     
-    def __call__(self, batch: List[Dict[str, Any]]) -> Dict[str, Union[torch.Tensor, Any]]:
+    def __call__(self, batch):
         batch = corrupt_and_convert(batch, corruption_rate=self.corruption_rate)
         
         src_txt = [sample['input'] for sample in batch]
-        src_tok = self.tokenizer(src_txt, return_tensors="pt", padding='longest', truncation=True, max_length=512)
+        src_tok = self.tokenizer(src_txt, return_tensors="pt",  padding='longest', truncation=True, max_length=512)
         
         return {
             **src_tok,
-            'labels': torch.as_tensor([sample['target'] for sample in batch])
+            "labels": torch.as_tensor([sample['target'] for sample in batch])
         }
+
+# class collator():
+#     def __init__(self, tokenizer, corruption_rate: float = 0.0):
+#         self.corruption_rate = corruption_rate
+#         self.tokenizer = tokenizer
+    
+#     def __call__(self, batch: List[Dict[str, Any]]) -> Dict[str, Union[torch.Tensor, Any]]:
+#         batch = corrupt_and_convert(batch, corruption_rate=self.corruption_rate)
+        
+#         src_txt = [sample['input'] for sample in batch]
+#         src_tok = self.tokenizer(src_txt, return_tensors="pt", padding='longest', truncation=True, max_length=512)
+        
+#         return {
+#             **src_tok,
+#             'labels': torch.as_tensor([sample['target'] for sample in batch])
+#         }
 
 
 

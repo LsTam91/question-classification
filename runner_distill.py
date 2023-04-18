@@ -201,7 +201,7 @@ def main():
         accumulate_grad_batches={0: 1, 400: max(64 // args.batch_size, 1)},
         accelerator='gpu' if(not args.cpu_only) else 'cpu',
         devices=args.ndevices,
-        # auto_select_gpus=True,
+        auto_select_gpus=True,
         precision=args.precision
         # strategy=ddp #"ddp_find_unused_parameters_false" # strategy to train the model on different machine
     )
@@ -217,5 +217,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
     
