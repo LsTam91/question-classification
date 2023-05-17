@@ -1,18 +1,22 @@
 import json 
 import os
-
+from typing import List
+import argparse
 from torch.utils.data import DataLoader, ConcatDataset
 
 # import pytorch_lightning as pl
+from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import  TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
-from pytorch_lightning import Trainer #, seed_everything
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
-import argparse
 
 # from this project:
-from model import classification_model, collator
-from model import train_and_distil, trad_collator, classification_multilanguage
+from model import (
+    collator,
+    trad_collator,
+    MQ_classification,
+    classification_multilanguage
+    )
 
 from evaluate_utils import HFMetric, MultiHFMetric
 
@@ -22,9 +26,7 @@ hf_logging.set_verbosity_error()
 
 # from pytorch_lightning.strategies import DDPStrategy
 
-parser = argparse.ArgumentParser(
-    description='Train classification model'
-    )
+parser = argparse.ArgumentParser(description='Train question classification model')
 parser.add_argument('--cpu-only', dest="cpu_only", default=False, action='store_true',
                     help='do not use GPUs (for dev only)')
 parser.add_argument('--ndevices', dest='ndevices', type=int, default=1)
@@ -57,18 +59,18 @@ parser.add_argument('--patience', dest='patience', default=10, type=int,
 
 parser.add_argument('--precision', dest='precision', default=32, type=int,
                     help='32bit precision or mixed 16bit precision')
-parser.add_argument('--model-type', dest='model_type', default='distil',
-                    help='classic, dpr-like, or distil')
+parser.add_argument('--task', dest='task', default='multi_obj',
+                    help='classic, or multi_obj')
 
 args = parser.parse_args()
 
 
 # we define the class score above to avoid lambda fct in validation_metrics
 class score:
-    def __init__(self, name):
+    def __init__(self, name: str):
         self.name = name
     
-    def __call__(self, x):
+    def __call__(self, x: List):
         return x[self.name]
 
 
@@ -89,16 +91,9 @@ def main():
     log_folder = os.path.expandvars("logs")
 
     #Loading the model
-    if args.model_type == 'french': 
-        # classic transformer classification model only in french:
-        # TODO: le virer
-        model = classification_model(model_name = args.model_name,
-            validation_callback = validation_metrics,
-            log_dir = log_folder+args.name
-            )
-
-    elif args.model_type == 'distil':
-        model = train_and_distil(model_name = os.path.expandvars("$HF_HOME/" + args.model_name),
+    if args.task == 'multi_obj':
+        model = MQ_classification(model_name = os.path.expandvars("$HF_HOME/" + args.model_name), # a changer pour que ça aille cherche dans model hub sur jz
+            task = 'multi_obj',
             validation_callback = validation_metrics,
             log_dir = log_folder+args.name,
             distance = args.distance
@@ -111,7 +106,7 @@ def main():
                 trad.append(json.load(fp))
 
         loader_trad = DataLoader(ConcatDataset(trad),
-                                    batch_size=5,
+                                    batch_size=args.batch_size//2,
                                     drop_last=True,
                                     collate_fn=trad_collator(model.tokenizer),
                                     shuffle=True,
@@ -119,7 +114,8 @@ def main():
                                     )
 
     else:
-        model = classification_multilanguage(model_name = os.path.expandvars("$HF_HOME/" + args.model_name),
+        model = MQ_classification(model_name = os.path.expandvars("$HF_HOME/" + args.model_name),
+            task = 'classic',
             validation_callback = validation_metrics,
             log_dir = log_folder+args.name
             )
@@ -155,13 +151,13 @@ def main():
                                 num_workers=args.num_worker
                                 ) 
     
-    # test_dataloader = DataLoader(ConcatDataset(test),
-    #                             batch_size=args.batch_size,
-    #                             drop_last=False,
-    #                             collate_fn = collator(model.tokenizer),
-    #                             shuffle=False,
-    #                             num_workers=args.num_worker
-    #                             )
+    test_dataloader = DataLoader(ConcatDataset(test),
+                                batch_size=args.batch_size,
+                                drop_last=False,
+                                collate_fn = collator(model.tokenizer),
+                                shuffle=False,
+                                num_workers=args.num_worker
+                                )
 
     # init the logger with the default tensorboard logger from lightning
     tb_logger = TensorBoardLogger(save_dir=log_folder, name=args.name)
@@ -208,12 +204,12 @@ def main():
 
     trainer.fit(
         model=model,
-        train_dataloaders={"classi": loader_classi, "trad": loader_trad} if args.model_type == 'distil' else loader_classi,
-        val_dataloaders=valid_dataloader #{'valid': valid_dataloader, 'test': test_dataloader}
+        train_dataloaders={"classi": loader_classi, "trad": loader_trad} if args.task == 'multi_obj' else loader_classi,
+        val_dataloaders=valid_dataloader
     )
     
     # test the model
-    # trainer.test(model, dataloaders=DataLoader(test_dataloader))
+    trainer.test(model, dataloaders=DataLoader(test_dataloader))
 
 if __name__ == "__main__":
     main()

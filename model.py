@@ -3,20 +3,24 @@ from torch import nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LinearLR #, ReduceLROnPlateau, SequentialLR, StepLR
 import pytorch_lightning as pl
+import transformers
 from transformers import AutoTokenizer, CamembertForSequenceClassification
 from transformers import AutoModelForSequenceClassification
-from typing import List, Dict, Any, Union
+from typing import Optional, List, Dict, Any, Union, Tuple
 
 # Import from project
 from noise import corrupt_and_convert
 
 
 class collator():
-    def __init__(self, tokenizer, corruption_rate = 0.):
+
+    """Data collator for text, question and target"""
+
+    def __init__(self, tokenizer: transformers.PreTrainedTokenizer, corruption_rate: float = 0.0) -> None:
         self.corruption_rate = corruption_rate
         self.tokenizer = tokenizer
     
-    def __call__(self, batch):
+    def __call__(self, batch: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
         batch = corrupt_and_convert(batch, corruption_rate=self.corruption_rate)
         
         src_txt = [sample['input'] for sample in batch]
@@ -27,29 +31,15 @@ class collator():
             "labels": torch.as_tensor([sample['target'] for sample in batch])
         }
 
-# class collator():
-#     def __init__(self, tokenizer, corruption_rate: float = 0.0):
-#         self.corruption_rate = corruption_rate
-#         self.tokenizer = tokenizer
-    
-#     def __call__(self, batch: List[Dict[str, Any]]) -> Dict[str, Union[torch.Tensor, Any]]:
-#         batch = corrupt_and_convert(batch, corruption_rate=self.corruption_rate)
-        
-#         src_txt = [sample['input'] for sample in batch]
-#         src_tok = self.tokenizer(src_txt, return_tensors="pt", padding='longest', truncation=True, max_length=512)
-        
-#         return {
-#             **src_tok,
-#             'labels': torch.as_tensor([sample['target'] for sample in batch])
-#         }
-
-
 
 class trad_collator():
-    def __init__(self, tokenizer):
+
+    """Data collator for the traduction task"""
+
+    def __init__(self, tokenizer: transformers.PreTrainedTokenizer) -> None:
         self.tokenizer = tokenizer
     
-    def __call__(self, batch):
+    def __call__(self, batch: List[Dict[str, str]]) -> Dict[str, torch.Tensor]:
         en_tok = self.tokenizer('<en> ' + ' '.join([sample['en'] for sample in batch]), return_tensors="pt",  padding='longest', truncation=True, max_length=512)
         fr_tok = self.tokenizer('<fr> ' + ' '.join([sample['fr'] for sample in batch]), return_tensors="pt",  padding='longest', truncation=True, max_length=512)
 
@@ -59,108 +49,47 @@ class trad_collator():
             }
 
 
-class classification_model(pl.LightningModule):
+class MQ_classification(pl.LightningModule):
+    """
+    This class defines a PyTorch Lightning module for a multi-task
+    classification problem or a classic classification problem using
+    pre-trained transformer-based models.
 
+    Args:
+        model_name (str, optional): The name or path of the pre-trained transformer-based model. Default is "xlm-roberta-base".
+        task (str, optional): define the task between classic transformer or my multi objectives method.
+        load_pretrained_model (bool, optional): Whether to load a pre-trained model from a file. Default is False.
+        validation_callback (function, optional): A function that takes the predictions and references as input and returns a dictionary of metrics. Default is None.
+        log_dir (str, optional): The path to the directory where logs will be saved. Default is None.
+        num_labels (int, optional): The number of labels for classification. Default is 2.
+        distance (str, optional): distance type for the <cls> similarity, L2 or cosine
+
+    Methods:
+        training_step(batch: tuple, batch_idx: int) -> torch.Tensor: Processes a batch of training data and returns the loss.
+        configure_optimizers() -> torch.optim.Optimizer: Configures optimizer and scheduler for training.
+        validation_step(batch: tuple, batch_idx: int) -> dict: Processes a batch of validation data and returns a dictionary of predictions and references.
+        validation_epoch_end(batch: list) -> None: Processes the validation results for an epoch.
+    """
     def __init__(
         self,
-        model_name = "camembert-base",
-        load_pretraned_model = False,
-        validation_callback = None, 
-        log_dir = None,
-        num_labels = 2
-        ):
-
-        super().__init__()
-
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-
-        if load_pretraned_model != False:
-            # self.model = self.load_state_dict(torch.load(load_pretraned_model))
-            self.model = torch.load(load_pretraned_model)
-        else:
-            self.model = CamembertForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
-
-        self.validation_callback = validation_callback
-        self.log_dir = log_dir
-    
-    def training_step(self, batch, batch_idx):
-        output = self.model(**batch)
-        loss = output[0]
-        self.log("train_loss", loss, sync_dist=True) #torch.as_tensor(loss), on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        return loss
-
-    def configure_optimizers(self):
-        optimizer = AdamW(self.model.parameters(), lr=1e-5)
-        scheduler = LinearLR(optimizer, total_iters = 1000, start_factor= 1.0 / 100.)
-        # scheduler2 = ReduceLROnPlateau(optimizer, 'min', patience=3)
-        # scheduler2 = StepLR(optimizer, step_size=1000, gamma=0.5)
-        scheduler = {
-            # "scheduler": SequentialLR(optimizer, schedulers=[scheduler1, scheduler2], milestones=[3]),
-            'scheduler': scheduler,
-            "interval": "step",
-            'name': 'lr_scheduler',
-            "frequency": 1
-        }
-        return [optimizer], [scheduler]
-        # return optimizer
-
-    def validation_step(self, batch, batch_idx):
-        output = self.model(**batch)
-        loss = output[0]
-        self.log("val_loss", loss, sync_dist=True)#torch.as_tensor(loss), on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        return {"predictions": output.logits.tolist(), "references": batch['labels'].tolist()}
-    
-    def validation_epoch_end(self, batch, *kargs, **kwargs):
-        predictions = sum([b["predictions"] for b in batch], [])
-        predictions = [(a[0] < a[1]) * 1 for a in predictions]
-        references = sum([b["references"] for b in batch], [])
-        # predictions = np.concatenate(batch['predictions'], axis=0)
-        # references = np.concatenate(batch['references'], axis=0)
-
-        if self.validation_callback is not None:
-            validation_log =  self.validation_callback(predictions, references)
-            for k, v in validation_log.items():
-                self.log("val_"+k, v, sync_dist=True)
-        # if self.log_dir != None:
-        #     df = pd.DataFrame({"predictions": predictions, "references": references})
-        #     df.to_csv(os.path.join(self.log_dir, "validation_prediction-"+str(self.current_epoch)+".csv"))
-
-    # def predict_step(self, batch, batch_idx):
-    #     with torch.no_grad():
-    #         generated_batch = self.model.generate(
-    #             input_ids = batch['input_ids'],
-    #             attention_mask = batch['attention_mask']
-    #         )
-
-    #     generated_text = self.tokenizer.batch_decode(generated_batch, skip_special_tokens=True)
-    #     ground_truth_text = self.tokenizer.batch_decode(batch['labels'], skip_special_tokens=True)
-    #     return [{"qid":batch["qid"][i], "qtype":batch["qtype"][i], "default_selection": batch["default_selection"][i],
-    #              "generated_text": generated_text[i], "ground_truth_text":ground_truth_text[i]} for i in range(len(batch["input_ids"]))]
-
-
-class train_and_distil(pl.LightningModule):
-
-    def __init__(
-        self,
-        model_name = "xlm-roberta-base", # "bert-base-multilingual-uncased", #
+        model_name = "xlm-roberta-base",
+        task : str = 'multi_obj', # or 'classic'
         load_pretraned_model = False,
         validation_callback = None,
         log_dir = None,
         num_labels = 2,
-        distance='cosine'
+        distance : str = 'cosine'
         ):
-
         super().__init__()
 
         self.model_name = model_name
+        self.task = task
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        #TODO
         self.tokenizer.add_tokens(['<en>', '<fr>'], special_tokens=True)
         
 
         if load_pretraned_model != False:
             self.model = torch.load(load_pretraned_model)
-            # self.model = self.load_state_dict(torch.load(load_pretraned_model), map_location=torch.device('cpu'))
         else:
             self.model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
             self.model.resize_token_embeddings(len(self.tokenizer))
@@ -175,34 +104,38 @@ class train_and_distil(pl.LightningModule):
 
         # Softmax fct:
         self.softmax = torch.nn.Softmax(dim=1)
+
+        # Extract the name of the backbone from the model
+        self.backbone_name = self.model.base_model_prefix
         
     
-    def training_step(self, batch, batch_idx):
-        output = self.model(**batch['classi'])
+    def training_step(
+        self, batch: Dict[str, torch.Tensor], batch_idx: int
+    ) -> torch.Tensor: # Or batch: Dict[str, Dict[str, torch.Tensor]] for multi_obj
+        if self.task == 'multi_obj':
+            output = self.model(**batch['classi'])
 
-        if "xlm-roberta-base" in self.model_name:
-            sen = self.model.roberta(**batch['trad']['en'])[0][:, 0, :]
-            sfr = self.model.roberta(**batch['trad']['fr'])[0][:, 0, :]
-        else:
-            sen = self.model.bert(**batch['trad']['en'])[0][:, 0, :]
-            sfr = self.model.bert(**batch['trad']['fr'])[0][:, 0, :]
+            sen = getattr(self.model, self.backbone_name)(**batch['trad']['en'])[0][:, 0, :]
+            sfr = getattr(self.model, self.backbone_name)(**batch['trad']['fr'])[0][:, 0, :]
 
-        # Take the distance between cls vector of both language
-        if self.distance == 'cosine':
-            # loss_trad = 1 - torch.mean(self.dist(sen, sfr))
-            loss_trad = torch.mean(1-self.dist(sen, sfr))
-        else:
-            loss_trad = torch.mean(torch.norm(sen-sfr, dim=1, p=2)) * 0.1
 
-        loss = output.loss + loss_trad
+            # Take the distance between cls vector of both language
+            if self.distance == 'cosine':
+                loss_trad = torch.mean(1-self.dist(sen, sfr))
+            else: # L2
+                loss_trad = torch.mean(torch.norm(sen-sfr, dim=1, p=2)) * 0.1
 
-        self.log("train_classi", output.loss, sync_dist=True)
-        self.log("train_trad", loss_trad, sync_dist=True)
+            loss = output.loss + loss_trad
+            self.log("train_trad", loss_trad, sync_dist=True)
+            self.log("train_classi", output.loss, sync_dist=True)
+
+        else: # For classic classification training
+            loss = self.model(**batch).loss
+
         self.log("train_loss", loss, sync_dist=True)
-        
         return loss
 
-    def configure_optimizers(self):
+    def configure_optimizers(self) -> Tuple[List[torch.optim.Optimizer], List[dict]]:
         optimizer = AdamW(self.model.parameters(), lr=1e-5)
 
         scheduler = {
@@ -211,89 +144,43 @@ class train_and_distil(pl.LightningModule):
             'name': 'lr_scheduler',
             "frequency": 1
         }
+        # Should return only optimizer if no scheduler is used
         return [optimizer], [scheduler]
 
-    def validation_step(self, batch, batch_idx):
-        output = self.model(**batch) # different here than two other algo
+    def validation_step(
+        self, batch: Dict[str, torch.Tensor], batch_idx: int
+    ) -> Dict[str, Any]:
+        output = self.model(**batch)
         self.log("val_loss", output.loss, sync_dist=True)
         return {"predictions": self.softmax(output.logits).tolist(), "references": batch['labels'].tolist()}
     
-    def validation_epoch_end(self, batch, *kargs, **kwargs):
-        predictions = sum([b["predictions"] for b in batch], [])
+    def validation_epoch_end(
+        self, outputs: Dict[str, Any], *kargs, **kwargs
+    ) -> None:
+        predictions = sum([b["predictions"] for b in outputs], [])
         predictions = [(a[0] < a[1]) * 1 for a in predictions]
-        references = sum([b["references"] for b in batch], [])
+        references = sum([b["references"] for b in outputs], [])
 
         if self.validation_callback is not None:
             validation_log =  self.validation_callback(predictions, references)
             for k, v in validation_log.items():
                 self.log("val_" + k, v, sync_dist=True)
 
-    def test_step(self, batch, batch_idx):
+    def test_step(
+        self, batch: Dict[str, torch.Tensor], batch_idx: int
+    ) -> Dict[str, Any]:
         output = self.model(**batch)
         self.log("test_loss", output.loss, sync_dist=True)
         return {"predictions": self.softmax(output.logits).tolist(), "references": batch['labels'].tolist()}
     
-    def test_epoch_end(self, batch, *kargs, **kwargs):
-        predictions = sum([b["predictions"] for b in batch], [])
+    def test_epoch_end(
+        self, outputs: Dict[str, Any], *kargs, **kwargs
+    ) -> None:
+        predictions = sum([b["predictions"] for b in outputs], [])
         predictions = [(a[0] < a[1]) * 1 for a in predictions]
-        references = sum([b["references"] for b in batch], [])
+        references = sum([b["references"] for b in outputs], [])
 
         if self.validation_callback is not None:
             validation_log =  self.validation_callback(predictions, references)
             for k, v in validation_log.items():
                 self.log("test_" + k, v, sync_dist=True)
-
-
-class classification_multilanguage(pl.LightningModule):
-
-    def __init__(
-        self,
-        model_name = "xlm-roberta-base",#"bert-base-multilingual-cased",
-        load_pretraned_model = False,
-        validation_callback = None, 
-        log_dir = None,
-        num_labels = 2
-        ):
-
-        super().__init__()
-
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.tokenizer.add_tokens(['<en>', '<fr>'], special_tokens=True) #TODO
-
-        if load_pretraned_model != False:
-            self.model = torch.load(load_pretraned_model)
-        else:
-            self.model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
-            self.model.resize_token_embeddings(len(self.tokenizer))
-            # for param in self.model.roberta.parameters(): # To try when we freeze params
-            #     param.requires_grad = False
-
-        self.validation_callback = validation_callback
-        self.log_dir = log_dir
-        
-        self.softmax = torch.nn.Softmax(dim=1)
-    
-    def training_step(self, batch, batch_idx):
-        output = self.model(**batch)
-
-        self.log("train_loss", output.loss, sync_dist=True)
-        return output.loss
-
-    def configure_optimizers(self):
-        optimizer = AdamW(self.model.parameters(), lr=1e-5)
-        return optimizer
-
-    def validation_step(self, batch, batch_idx):
-        output = self.model(**batch)
-        self.log("val_loss", output.loss, sync_dist=True)
-        return {"predictions": self.softmax(output.logits).tolist(), "references": batch['labels'].tolist()}
-    
-    def validation_epoch_end(self, batch, *kargs, **kwargs):
-        predictions = sum([b["predictions"] for b in batch], [])
-        predictions = [(a[0] < a[1]) * 1 for a in predictions]
-        references = sum([b["references"] for b in batch], [])
-
-        if self.validation_callback is not None:
-            validation_log =  self.validation_callback(predictions, references)
-            for k, v in validation_log.items():
-                self.log("val_"+k, v, sync_dist=True)
