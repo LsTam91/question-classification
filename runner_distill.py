@@ -14,8 +14,7 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from model import (
     collator,
     trad_collator,
-    MQ_classification,
-    classification_multilanguage
+    MQ_classification
     )
 
 from evaluate_utils import HFMetric, MultiHFMetric
