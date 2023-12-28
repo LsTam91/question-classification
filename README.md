@@ -15,4 +15,4 @@ When I initially embarked on this project, the available data was limited, and t
 
 ## Acknowledgments
 
-A big thanks to Idris Jean-Zay GPU to fine-tune mu models
+Thank you to [Idris Jean-Zay GPU](http://www.idris.fr/jean-zay/), whose computational resources permit to fine-tune my models.
