@@ -1,9 +1,4 @@
-# question-classification
-
-A framework to train a model to classify questions we generated with our first LLM.
-A project I worked on very soon after I started to work in the field of NLP as it revealed obvious that we are lacking of evaluation methods in the community. I did few eperiments with the little amount of data I had back then, to increase and corrupt good questions. The results are poor in comparison to what we can do with LLM nowadays.
-
-# Question Classification Framework
+# Question Classification
 
 ## Overview
 
